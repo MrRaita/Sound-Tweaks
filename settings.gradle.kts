@@ -11,9 +11,8 @@ dependencyResolutionManagement {
     repositories {
         google()
         mavenCentral()
-        maven { url = uri("https://api.xposed.info/") }
     }
 }
 
-rootProject.name = "TextSelectionToolbarCustomizer"
+rootProject.name = "SoundMod"
 include(":app")

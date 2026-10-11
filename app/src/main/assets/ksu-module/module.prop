@@ -1,0 +1,6 @@
+id=soundmod-selinux
+name=SoundMod SELinux
+version=1.0
+versionCode=1
+author=SoundMod
+description=SoundMod için SystemUI'nin /data/system/soundmod altındaki ses dosyalarını okumasına izin verir.
