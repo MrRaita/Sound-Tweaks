@@ -6,6 +6,9 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -21,8 +24,7 @@ jobs:
         with:
           gradle-version: 9.5.0
 
-      # Repoda gradle-wrapper.jar yoksa (ikili dosya) resmi wrapper'ı üret
-      - name: Gradle wrapper hazırla
+      - name: Gradle wrapper hazirla
         run: |
           if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
             gradle wrapper --gradle-version 9.5.0
@@ -32,9 +34,18 @@ jobs:
       - name: APK derle
         run: ./gradlew assembleRelease --stacktrace
 
-      - name: APK yükle
+      - name: APK yukle (artifact)
         uses: actions/upload-artifact@v4
         with:
           name: SoundMod-apk
           path: app/build/outputs/apk/release/*.apk
           if-no-files-found: error
+
+      - name: Release olustur (APK dogrudan indirilebilir)
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: build-${{ github.run_number }}
+          name: SoundMod build ${{ github.run_number }}
+          files: app/build/outputs/apk/release/*.apk
+          prerelease: true
