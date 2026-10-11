@@ -18,6 +18,7 @@ import dev.soundmod.nothing.core.SoundSlot
 import dev.soundmod.nothing.ui.MainViewModel
 import dev.soundmod.nothing.ui.SoundModScreen
 import dev.soundmod.nothing.ui.SoundModTheme
+import dev.soundmod.nothing.ui.UiActions
 
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
@@ -27,6 +28,7 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             val state by vm.state.collectAsStateWithLifecycle()
+            val player = vm.player.collectAsStateWithLifecycle()
             val snackbar = remember { SnackbarHostState() }
             var pendingSlot by remember { mutableStateOf<SoundSlot?>(null) }
 
@@ -40,26 +42,44 @@ class MainActivity : ComponentActivity() {
                 vm.messages.collect { snackbar.showSnackbar(it) }
             }
 
-            SoundModTheme(reduceMotion = state.reduceMotion) {
-                SoundModScreen(
-                    state = state,
-                    snackbar = snackbar,
-                    onRefresh = vm::refreshAll,
-                    onReloadLibrary = vm::loadLibrary,
-                    onPreviewPath = vm::preview,
-                    onTestFx = vm::testEffect,
-                    onPickSystem = vm::applySystem,
-                    onPickFile = { slot ->
+            val actions = remember {
+                UiActions(
+                    refresh = vm::refreshAll,
+                    refreshSys = vm::refreshSys,
+                    reloadLibrary = vm::loadLibrary,
+                    playLibrary = vm::playLibrary,
+                    playSlot = vm::playSlot,
+                    testFx = vm::testEffect,
+                    pickSystem = vm::applySystem,
+                    pickFile = { slot ->
                         pendingSlot = slot
                         picker.launch(arrayOf("audio/*"))
                     },
-                    onReset = vm::reset,
-                    onReduceMotion = vm::setReduceMotion,
-                    onNormalize = vm::setNormalize,
-                    onTargetDb = vm::setTargetDb,
-                    onInstallModule = vm::installModule,
-                    onReboot = vm::reboot
+                    reset = vm::reset,
+                    setReduceMotion = vm::setReduceMotion,
+                    setNormalize = vm::setNormalize,
+                    setTargetDb = vm::setTargetDb,
+                    reapplyAll = vm::reapplyAll,
+                    setThemeMode = vm::setThemeMode,
+                    setDynamic = vm::setDynamic,
+                    setPalette = vm::setPalette,
+                    setRestartSysUi = vm::setRestartSysUi,
+                    restartSysUiNow = vm::restartSysUiNow,
+                    setSystemToggle = vm::setSystemToggle,
+                    installModule = vm::installModule,
+                    reboot = vm::reboot,
+                    buildReport = vm::buildReport,
+                    clearReport = vm::clearReport
                 )
+            }
+
+            SoundModTheme(
+                themeMode = state.themeMode,
+                dynamic = state.dynamicColor,
+                palette = state.palette,
+                reduceMotion = state.reduceMotion
+            ) {
+                SoundModScreen(state = state, player = player, snackbar = snackbar, a = actions)
             }
         }
     }

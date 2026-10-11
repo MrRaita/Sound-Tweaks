@@ -2,26 +2,50 @@
 
 package dev.soundmod.nothing.ui
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
+import android.os.Build
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Notifications
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
@@ -32,8 +56,8 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.FilledTonalIconButton
 import androidx.compose.material3.FilterChip
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
@@ -48,13 +72,15 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -62,63 +88,155 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
-import dev.soundmod.nothing.core.SlotType
+import androidx.compose.ui.unit.sp
 import dev.soundmod.nothing.core.SoundCatalog
 import dev.soundmod.nothing.core.SoundSlot
 import dev.soundmod.nothing.core.SystemSound
 
+/** Arayüzün çağırdığı tüm eylemler (tek yerde toplandı). */
+data class UiActions(
+    val refresh: () -> Unit,
+    val refreshSys: () -> Unit,
+    val reloadLibrary: () -> Unit,
+    val playLibrary: (String) -> Unit,
+    val playSlot: (SoundSlot) -> Unit,
+    val testFx: (Int) -> Unit,
+    val pickSystem: (SoundSlot, SystemSound) -> Unit,
+    val pickFile: (SoundSlot) -> Unit,
+    val reset: (SoundSlot) -> Unit,
+    val setReduceMotion: (Boolean) -> Unit,
+    val setNormalize: (Boolean) -> Unit,
+    val setTargetDb: (Int) -> Unit,
+    val reapplyAll: () -> Unit,
+    val setThemeMode: (Int) -> Unit,
+    val setDynamic: (Boolean) -> Unit,
+    val setPalette: (Int) -> Unit,
+    val setRestartSysUi: (Boolean) -> Unit,
+    val restartSysUiNow: () -> Unit,
+    val setSystemToggle: (SysToggle, Boolean) -> Unit,
+    val installModule: () -> Unit,
+    val reboot: () -> Unit,
+    val buildReport: () -> Unit,
+    val clearReport: () -> Unit
+)
+
 @Composable
 fun SoundModScreen(
     state: UiState,
+    player: State<PlayerUi>,
     snackbar: SnackbarHostState,
-    onRefresh: () -> Unit,
-    onReloadLibrary: () -> Unit,
-    onPreviewPath: (String) -> Unit,
-    onTestFx: (Int) -> Unit,
-    onPickSystem: (SoundSlot, SystemSound) -> Unit,
-    onPickFile: (SoundSlot) -> Unit,
-    onReset: (SoundSlot) -> Unit,
-    onReduceMotion: (Boolean) -> Unit,
-    onNormalize: (Boolean) -> Unit,
-    onTargetDb: (Int) -> Unit,
-    onInstallModule: () -> Unit,
-    onReboot: () -> Unit
+    a: UiActions
 ) {
     var tab by remember { mutableIntStateOf(0) }
     val titles = listOf("Sesler", "Kütüphane", "Ayarlar")
+    val listStates = listOf(rememberLazyListState(), rememberLazyListState(), rememberLazyListState())
 
-    Scaffold(
-        topBar = {
-            Column {
-                TopAppBar(title = { Text(titles[tab]) })
-                if (state.busy) {
-                    if (state.reduceMotion) LinearProgressIndicator(Modifier.fillMaxWidth())
-                    else LinearWavyProgressIndicator(Modifier.fillMaxWidth())
+    LaunchedEffect(tab) { if (tab == 2) a.refreshSys() }
+
+    CompositionLocalProvider(LocalReduceMotion provides state.reduceMotion) {
+        Scaffold(
+            containerColor = MaterialTheme.colorScheme.surface,
+            topBar = {
+                Column {
+                    Header(titles[tab], state.reduceMotion)
+                    if (state.busy) {
+                        if (state.reduceMotion) LinearProgressIndicator(Modifier.fillMaxWidth())
+                        else LinearWavyProgressIndicator(Modifier.fillMaxWidth())
+                    }
                 }
-            }
-        },
-        bottomBar = {
-            NavigationBar {
-                NavigationBarItem(tab == 0, { tab = 0 }, { Icon(Icons.Default.Notifications, null) }, label = { Text("Sesler") })
-                NavigationBarItem(tab == 1, { tab = 1 }, { Icon(Icons.Default.Search, null) }, label = { Text("Kütüphane") })
-                NavigationBarItem(tab == 2, { tab = 2 }, { Icon(Icons.Default.Settings, null) }, label = { Text("Ayarlar") })
-            }
-        },
-        snackbarHost = { SnackbarHost(snackbar) }
-    ) { pad ->
-        Box(Modifier.padding(pad).fillMaxSize()) {
-            when (tab) {
-                0 -> SoundsTab(state, onTestFx, onPickSystem, onPickFile, onReset, onPreviewPath)
-                1 -> LibraryTab(state, onReloadLibrary, onPreviewPath)
-                else -> SettingsTab(
-                    state, onRefresh, onReduceMotion, onNormalize, onTargetDb, onInstallModule, onReboot
-                )
+            },
+            bottomBar = {
+                Surface(
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
+                    tonalElevation = 3.dp
+                ) {
+                    NavigationBar(containerColor = Color.Transparent) {
+                        NavigationBarItem(tab == 0, { tab = 0 }, { Icon(Icons.Default.Notifications, null) }, label = { Text("Sesler") })
+                        NavigationBarItem(tab == 1, { tab = 1 }, { Icon(Icons.Default.Search, null) }, label = { Text("Kütüphane") })
+                        NavigationBarItem(tab == 2, { tab = 2 }, { Icon(Icons.Default.Settings, null) }, label = { Text("Ayarlar") })
+                    }
+                }
+            },
+            snackbarHost = { SnackbarHost(snackbar) }
+        ) { pad ->
+            Box(Modifier.padding(pad).fillMaxSize()) {
+                AnimatedContent(
+                    targetState = tab,
+                    transitionSpec = {
+                        if (state.reduceMotion) {
+                            fadeIn(tween(0)) togetherWith fadeOut(tween(0))
+                        } else {
+                            val dir = if (targetState > initialState) 1 else -1
+                            (slideInHorizontally(spring(dampingRatio = 0.8f, stiffness = 300f)) { it * dir / 3 } + fadeIn(tween(220))) togetherWith
+                                (slideOutHorizontally(tween(180)) { -it * dir / 3 } + fadeOut(tween(120)))
+                        }
+                    },
+                    label = "tabs"
+                ) { t ->
+                    when (t) {
+                        0 -> SoundsTab(state, player, a, listStates[0])
+                        1 -> LibraryTab(state, player, a, listStates[1])
+                        else -> SettingsTab(state, a, listStates[2])
+                    }
+                }
+                if (state.busy && !state.reduceMotion) {
+                    LoadingIndicator(Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp).size(48.dp))
+                }
             }
         }
     }
+
+    state.report?.let { text -> ReportSheet(text, a.clearReport) }
+}
+
+// ------------------------------------------------------------------------------------------
+// Başlık: üstte uygulama adı, altında bulunulan sekme
+// ------------------------------------------------------------------------------------------
+
+@Composable
+private fun Header(title: String, reduceMotion: Boolean) {
+    Column(
+        Modifier
+            .fillMaxWidth()
+            .statusBarsPadding()
+            .padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 14.dp)
+    ) {
+        Text(
+            "SoundMod",
+            style = MaterialTheme.typography.labelLarge,
+            color = MaterialTheme.colorScheme.primary
+        )
+        AnimatedContent(
+            targetState = title,
+            transitionSpec = {
+                if (reduceMotion) fadeIn(tween(0)) togetherWith fadeOut(tween(0))
+                else (fadeIn(tween(240)) + slideInVertically(tween(240)) { it / 3 }) togetherWith
+                    (fadeOut(tween(120)) + slideOutVertically(tween(120)) { -it / 3 })
+            },
+            label = "title"
+        ) { t ->
+            Text(t, style = MaterialTheme.typography.displaySmall)
+        }
+    }
+}
+
+@Composable
+private fun GroupHeader(text: String) {
+    Text(
+        text,
+        style = MaterialTheme.typography.titleSmall,
+        color = MaterialTheme.colorScheme.primary,
+        modifier = Modifier.padding(start = 12.dp, top = 22.dp, bottom = 8.dp)
+    )
 }
 
 // ------------------------------------------------------------------------------------------
@@ -126,64 +244,46 @@ fun SoundModScreen(
 // ------------------------------------------------------------------------------------------
 
 @Composable
-private fun SoundsTab(
-    state: UiState,
-    onTestFx: (Int) -> Unit,
-    onPickSystem: (SoundSlot, SystemSound) -> Unit,
-    onPickFile: (SoundSlot) -> Unit,
-    onReset: (SoundSlot) -> Unit,
-    onPreviewPath: (String) -> Unit
-) {
+private fun SoundsTab(state: UiState, player: State<PlayerUi>, a: UiActions, listState: LazyListState) {
     var sheetSlot by remember { mutableStateOf<SoundSlot?>(null) }
     var pickerSlot by remember { mutableStateOf<SoundSlot?>(null) }
 
     LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
+        state = listState,
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-                Column(Modifier.padding(16.dp)) {
-                    Text(state.note, style = MaterialTheme.typography.titleMedium)
-                    if (state.root == RootState.DENIED) {
-                        Spacer(Modifier.height(8.dp))
-                        Text(
-                            "Root izni alınamadı. Ayarlar sekmesinden yeniden dene.",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+        if (state.root == RootState.DENIED) {
+            item(key = "rootwarn") {
+                Card(
+                    shape = segmentShape(0, 1),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text("Root izni yok", style = MaterialTheme.typography.titleMedium)
+                        Text("Ses değiştirmek için kök yöneticisinde SoundMod'a izin ver.", style = MaterialTheme.typography.bodyMedium)
+                        TextButton(onClick = a.refresh) { Text("Yeniden dene") }
                     }
                 }
             }
         }
-        SoundCatalog.slots.map { it.group }.distinct().forEach { group ->
-            item {
-                Text(
-                    group,
-                    style = MaterialTheme.typography.titleSmall,
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(top = 8.dp, start = 4.dp)
+        var running = 0
+        SoundCatalog.groups.forEach { group ->
+            val rows = state.slots.filter { it.slot.group == group }
+            if (rows.isEmpty()) return@forEach
+            val base = running
+            running += rows.size
+            item(key = "h_$group") { GroupHeader(group) }
+            itemsIndexed(rows, key = { _, r -> r.slot.id }) { i, ss ->
+                SlotRow(
+                    shape = segmentShape(i, rows.size),
+                    ss = ss,
+                    player = player,
+                    onClick = { sheetSlot = ss.slot },
+                    onPlay = { a.playSlot(ss.slot) },
+                    modifier = Modifier.animateItem().staggerIn(base + i)
                 )
-            }
-            items(state.slots.filter { it.slot.group == group }, key = { it.slot.id }) { ss ->
-                Card(
-                    modifier = Modifier.fillMaxWidth().clickable { sheetSlot = ss.slot },
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
-                ) {
-                    Row(Modifier.padding(horizontal = 16.dp, vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text(ss.slot.title, style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                ss.label ?: "Varsayılan",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = if (ss.label != null) MaterialTheme.colorScheme.primary
-                                else MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        ss.slot.fx?.let { fx ->
-                            IconButton(onClick = { onTestFx(fx) }) { Icon(Icons.Default.PlayArrow, "Dene") }
-                        }
-                    }
-                }
             }
         }
     }
@@ -191,22 +291,36 @@ private fun SoundsTab(
     sheetSlot?.let { slot ->
         val sheetState = rememberModalBottomSheetState()
         ModalBottomSheet(onDismissRequest = { sheetSlot = null }, sheetState = sheetState) {
-            Column(Modifier.padding(horizontal = 20.dp).padding(bottom = 28.dp)) {
+            Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
                 Text(slot.title, style = MaterialTheme.typography.headlineSmall)
                 Text(slot.desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                Spacer(Modifier.height(16.dp))
+                if (slot.restartSysUi) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Bu ses Sistem Arayüzü açılırken bir kez yüklenir; değişince otomatik yenilenir.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Spacer(Modifier.height(18.dp))
                 Button(
                     onClick = { pickerSlot = slot; sheetSlot = null },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Sistem seslerinden seç") }
                 Spacer(Modifier.height(8.dp))
                 FilledTonalButton(
-                    onClick = { onPickFile(slot); sheetSlot = null },
+                    onClick = { a.pickFile(slot); sheetSlot = null },
                     modifier = Modifier.fillMaxWidth()
                 ) { Text("Kendi dosyamı seç") }
+                slot.fx?.let { fx ->
+                    Spacer(Modifier.height(8.dp))
+                    OutlinedButton(onClick = { a.testFx(fx) }, modifier = Modifier.fillMaxWidth()) {
+                        Text("Sistem üzerinden dene")
+                    }
+                }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
-                    onClick = { onReset(slot); sheetSlot = null },
+                    onClick = { a.reset(slot); sheetSlot = null },
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Icon(Icons.Default.Delete, null)
@@ -218,14 +332,86 @@ private fun SoundsTab(
     }
 
     pickerSlot?.let { slot ->
-        LibraryPicker(
-            title = slot.title,
-            sounds = state.library,
-            loading = state.libraryLoading,
-            onPreview = onPreviewPath,
-            onPick = { onPickSystem(slot, it); pickerSlot = null },
-            onDismiss = { pickerSlot = null }
-        )
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(onDismissRequest = { pickerSlot = null }, sheetState = sheetState) {
+            Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
+                Text(
+                    "${slot.title} için ses seç",
+                    style = MaterialTheme.typography.titleLarge,
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
+                )
+                SoundList(
+                    sounds = state.library,
+                    loading = state.libraryLoading,
+                    player = player,
+                    onPlay = a.playLibrary,
+                    onPick = { a.pickSystem(slot, it); pickerSlot = null }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SlotRow(
+    shape: Shape,
+    ss: SlotState,
+    player: State<PlayerUi>,
+    onClick: () -> Unit,
+    onPlay: () -> Unit,
+    modifier: Modifier
+) {
+    val src = remember { MutableInteractionSource() }
+    val key = "slot:${ss.slot.id}"
+    val active = player.value.key == key
+    val playing = active && player.value.playing
+    val custom = ss.label != null
+
+    Card(
+        onClick = onClick,
+        shape = shape,
+        interactionSource = src,
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+        modifier = modifier.fillMaxWidth().pressScale(src)
+    ) {
+        Row(
+            Modifier.padding(start = 20.dp, end = 12.dp, top = 12.dp, bottom = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(ss.slot.title, style = MaterialTheme.typography.titleMedium)
+                    AnimatedVisibility(visible = custom) {
+                        Surface(
+                            shape = CircleShape,
+                            color = MaterialTheme.colorScheme.secondaryContainer,
+                            modifier = Modifier.padding(start = 8.dp)
+                        ) {
+                            Text(
+                                "Özel",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                            )
+                        }
+                    }
+                }
+                Text(
+                    ss.label ?: "Varsayılan",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = if (custom) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            PlayPauseButton(playing = playing, onClick = onPlay)
+        }
+        AnimatedVisibility(visible = active) {
+            LinearWavyProgressIndicator(
+                progress = { player.value.progress },
+                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 14.dp)
+            )
+        }
     }
 }
 
@@ -234,42 +420,28 @@ private fun SoundsTab(
 // ------------------------------------------------------------------------------------------
 
 @Composable
-private fun LibraryTab(state: UiState, onReload: () -> Unit, onPreview: (String) -> Unit) {
+private fun LibraryTab(state: UiState, player: State<PlayerUi>, a: UiActions, listState: LazyListState) {
     Column(Modifier.fillMaxSize()) {
-        Row(Modifier.padding(horizontal = 16.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(
+            Modifier.padding(start = 28.dp, end = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
             Text(
                 "${state.library.size} ses bulundu",
                 style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f)
             )
-            IconButton(onClick = onReload) { Icon(Icons.Default.Refresh, "Yeniden tara") }
+            IconButton(onClick = a.reloadLibrary) { Icon(Icons.Default.Refresh, "Yeniden tara") }
         }
-        SoundList(state.library, state.libraryLoading, onPreview, null)
-    }
-}
-
-@Composable
-private fun LibraryPicker(
-    title: String,
-    sounds: List<SystemSound>,
-    loading: Boolean,
-    onPreview: (String) -> Unit,
-    onPick: (SystemSound) -> Unit,
-    onDismiss: () -> Unit
-) {
-    Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
-        Scaffold(
-            topBar = {
-                TopAppBar(
-                    title = { Text("$title için ses seç") },
-                    actions = { TextButton(onClick = onDismiss) { Text("Kapat") } }
-                )
-            }
-        ) { pad ->
-            Box(Modifier.padding(pad).fillMaxSize()) {
-                SoundList(sounds, loading, onPreview, onPick)
-            }
-        }
+        SoundList(
+            sounds = state.library,
+            loading = state.libraryLoading,
+            player = player,
+            onPlay = a.playLibrary,
+            onPick = null,
+            listState = listState
+        )
     }
 }
 
@@ -277,8 +449,10 @@ private fun LibraryPicker(
 private fun SoundList(
     sounds: List<SystemSound>,
     loading: Boolean,
-    onPreview: (String) -> Unit,
-    onPick: ((SystemSound) -> Unit)?
+    player: State<PlayerUi>,
+    onPlay: (String) -> Unit,
+    onPick: ((SystemSound) -> Unit)?,
+    listState: LazyListState = rememberLazyListState()
 ) {
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf<String?>(null) }
@@ -295,16 +469,30 @@ private fun SoundList(
             value = query,
             onValueChange = { query = it },
             singleLine = true,
+            shape = CircleShape,
             label = { Text("Ara") },
+            leadingIcon = { Icon(Icons.Default.Search, null) },
             modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
         )
         LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            item { FilterChip(selected = category == null, onClick = { category = null }, label = { Text("Hepsi") }) }
-            items(categories) { c ->
-                FilterChip(selected = category == c, onClick = { category = c }, label = { Text(c) })
+            item {
+                FilterChip(
+                    selected = category == null,
+                    onClick = { category = null },
+                    label = { Text("Hepsi") },
+                    shape = CircleShape
+                )
+            }
+            itemsIndexed(categories) { _, c ->
+                FilterChip(
+                    selected = category == c,
+                    onClick = { category = if (category == c) null else c },
+                    label = { Text(c) },
+                    shape = CircleShape
+                )
             }
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
@@ -317,33 +505,76 @@ private fun SoundList(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             } else {
-                LazyColumn(contentPadding = PaddingValues(vertical = 8.dp)) {
-                    items(filtered, key = { it.path }) { s ->
-                        Row(
-                            Modifier
-                                .fillMaxWidth()
-                                .clickable(enabled = onPick != null) { onPick?.invoke(s) }
-                                .padding(horizontal = 16.dp, vertical = 6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(Modifier.weight(1f)) {
-                                Text(s.name, style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    "${s.category} · ${s.partition}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            IconButton(onClick = { onPreview(s.path) }) { Icon(Icons.Default.PlayArrow, "Dinle") }
-                            if (onPick != null) {
-                                IconButton(onClick = { onPick(s) }) { Icon(Icons.Default.Check, "Seç") }
-                            }
-                        }
-                        HorizontalDivider()
+                LazyColumn(
+                    state = listState,
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                ) {
+                    itemsIndexed(filtered, key = { _, s -> s.path }) { i, s ->
+                        SoundRow(
+                            shape = segmentShape(i, filtered.size),
+                            sound = s,
+                            player = player,
+                            onPlay = { onPlay(s.path) },
+                            onPick = onPick?.let { pick -> { pick(s) } },
+                            modifier = Modifier.animateItem().staggerIn(i)
+                        )
                     }
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun SoundRow(
+    shape: Shape,
+    sound: SystemSound,
+    player: State<PlayerUi>,
+    onPlay: () -> Unit,
+    onPick: (() -> Unit)?,
+    modifier: Modifier
+) {
+    val src = remember { MutableInteractionSource() }
+    val key = "lib:${sound.path}"
+    val active = player.value.key == key
+    val playing = active && player.value.playing
+
+    val cardModifier = modifier.fillMaxWidth().pressScale(src)
+    val colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)
+    val content: @Composable () -> Unit = {
+        Column {
+            Row(
+                Modifier.padding(start = 20.dp, end = 8.dp, top = 8.dp, bottom = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(sound.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(
+                        "${sound.category} · ${sound.partition}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                PlayPauseButton(playing = playing, onClick = onPlay)
+                if (onPick != null) {
+                    Spacer(Modifier.width(4.dp))
+                    FilledTonalIconButton(onClick = onPick) { Icon(Icons.Default.Check, "Seç") }
+                }
+            }
+            AnimatedVisibility(visible = active) {
+                LinearWavyProgressIndicator(
+                    progress = { player.value.progress },
+                    modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
+                )
+            }
+        }
+    }
+
+    if (onPick != null) {
+        Card(onClick = onPick, shape = shape, interactionSource = src, colors = colors, modifier = cardModifier) { content() }
+    } else {
+        Card(shape = shape, colors = colors, modifier = cardModifier) { content() }
     }
 }
 
@@ -352,102 +583,253 @@ private fun SoundList(
 // ------------------------------------------------------------------------------------------
 
 @Composable
-private fun SettingsTab(
-    state: UiState,
-    onRefresh: () -> Unit,
-    onReduceMotion: (Boolean) -> Unit,
-    onNormalize: (Boolean) -> Unit,
-    onTargetDb: (Int) -> Unit,
-    onInstallModule: () -> Unit,
-    onReboot: () -> Unit
-) {
+private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) {
+    val container = MaterialTheme.colorScheme.surfaceContainerHigh
+
     LazyColumn(
-        contentPadding = PaddingValues(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp)
+        state = listState,
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
+        // ---- Durum ----
+        item { GroupHeader("Durum") }
         item {
-            StatusCard(
-                title = "Root",
-                ok = state.root == RootState.GRANTED,
-                text = when (state.root) {
-                    RootState.GRANTED -> "Root izni verildi"
-                    RootState.DENIED -> "Root izni yok. Kök yöneticisinde SoundMod'a izin ver."
-                    RootState.UNKNOWN -> "Kontrol ediliyor…"
-                }
-            ) { TextButton(onClick = onRefresh) { Text("Yeniden kontrol et") } }
-        }
-        item {
-            StatusCard(
-                title = "Vector modülü",
-                ok = state.hookStatus != null,
-                text = state.hookStatus
-                    ?: "Hook henüz çalışmamış. Vector'da SoundMod'u etkinleştir, kapsamda " +
-                    "“Sistem Çerçevesi” ve “Sistem Arayüzü”nü seç, sonra yeniden başlat."
-            ) {}
-        }
-        item {
-            StatusCard(
-                title = "SELinux yardımcı modülü (isteğe bağlı)",
-                ok = state.moduleInstalled,
-                text = if (state.moduleInstalled) "Kurulu. Sistem Arayüzü sesleri okunabilsin diye kural ekler."
-                else "Kilit/ekran görüntüsü gibi SystemUI sesleri özel dosyada çalmazsa kur. Kurduktan sonra yeniden başlat."
-            ) {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    FilledTonalButton(onClick = onInstallModule, enabled = state.root == RootState.GRANTED) {
-                        Text(if (state.moduleInstalled) "Yeniden kur" else "Kur")
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(0)) {
+                StatusCard(
+                    shape = segmentShape(0, 3), container = container,
+                    title = "Root", ok = state.root == RootState.GRANTED,
+                    text = when (state.root) {
+                        RootState.GRANTED -> "Root izni verildi"
+                        RootState.DENIED -> "Root izni yok. Kök yöneticisinde SoundMod'a izin ver."
+                        RootState.UNKNOWN -> "Kontrol ediliyor…"
                     }
-                    OutlinedButton(onClick = onReboot, enabled = state.root == RootState.GRANTED) { Text("Yeniden başlat") }
+                ) { TextButton(onClick = a.refresh) { Text("Yeniden kontrol et") } }
+                StatusCard(
+                    shape = segmentShape(1, 3), container = container,
+                    title = "Vector modülü", ok = state.hookStatus != null,
+                    text = state.hookStatus
+                        ?: "Hook henüz çalışmamış. Vector'da SoundMod'u etkinleştir, kapsamda " +
+                        "“Sistem Çerçevesi” ve “Sistem Arayüzü”nü seç, sonra yeniden başlat."
+                ) {}
+                StatusCard(
+                    shape = segmentShape(2, 3), container = container,
+                    title = "SELinux yardımcı modülü (isteğe bağlı)", ok = state.moduleInstalled,
+                    text = if (state.moduleInstalled)
+                        "Kurulu. Açılışta ses deposunun SELinux bağlamını onarır."
+                    else "Açılışta ses deposunun bağlamını onarır. Kilit/ekran görüntüsü sesleri özel dosyada çalmazsa kur."
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        FilledTonalButton(onClick = a.installModule, enabled = state.root == RootState.GRANTED) {
+                            Text(if (state.moduleInstalled) "Yeniden kur" else "Kur")
+                        }
+                        OutlinedButton(onClick = a.reboot, enabled = state.root == RootState.GRANTED) { Text("Yeniden başlat") }
+                    }
                 }
             }
         }
+
+        // ---- Sistem ses durumu ----
+        item { GroupHeader("Sistem ses durumu") }
         item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Ses işleme", style = MaterialTheme.typography.titleMedium)
-                    SwitchRow("Seviyeyi normalize et", "Kendi dosyaların ortak bir seviyeye getirilir", state.normalize, onNormalize)
+            val s = state.sys
+            val muted = s.ringer != "Normal" || s.systemMuted
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(1)) {
+                SettingsCard(segmentShape(0, 2), container) {
+                    Text("Sesleri bastıran ayarlar", style = MaterialTheme.typography.titleMedium)
+                    SwitchRow("Dokunma sesleri", "Klavye ve dokunma sesleri için gerekli", s.touchSounds, true) {
+                        a.setSystemToggle(SysToggle.TOUCH, it)
+                    }
+                    SwitchRow("Kilit ekranı sesleri", "Kilitleme ve kilit açma sesleri", s.lockSounds, true) {
+                        a.setSystemToggle(SysToggle.LOCK, it)
+                    }
+                    SwitchRow("Şarj sesleri", "Şarj başlayınca çalan ses", s.chargingSounds, true) {
+                        a.setSystemToggle(SysToggle.CHARGING, it)
+                    }
+                }
+                SettingsCard(segmentShape(1, 2), container) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (muted) Icons.Default.Warning else Icons.Default.Check, null,
+                            tint = if (muted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Text(
+                            "Zil modu: ${s.ringer} · Sistem sesi: ${s.systemVol}/${s.systemMax}" +
+                                if (s.systemMuted) " (kapalı)" else "",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                    if (muted) {
+                        Text(
+                            "Telefon titreşim/sessizde ya da sistem sesi kapalıyken kilit ve dokunma sesleri çalmaz. " +
+                                "Ses seviyesini ya da zil modunu aç.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+        }
+
+        // ---- Ses işleme ----
+        item { GroupHeader("Ses işleme") }
+        item {
+            Column(modifier = Modifier.staggerIn(2)) {
+                SettingsCard(segmentShape(0, 1), container) {
+                    SwitchRow(
+                        "Seviyeyi normalize et",
+                        "Seçtiğin sesler ortak bir ortalama seviyeye getirilir (tepeler yumuşak sınırlanır)",
+                        state.normalize, true, a.setNormalize
+                    )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
                             Text("Hedef seviye", style = MaterialTheme.typography.bodyLarge)
-                            Text("${state.targetDb} dBFS (ort.)", style = MaterialTheme.typography.bodySmall)
+                            Text(
+                                "${state.targetDb} dBFS (ortalama)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                         }
-                        OutlinedButton(onClick = { onTargetDb(state.targetDb - 2) }, enabled = state.normalize) { Text("−") }
+                        FilledTonalIconButton(
+                            onClick = { a.setTargetDb(state.targetDb - 1) }, enabled = state.normalize
+                        ) { Text("−", style = MaterialTheme.typography.titleLarge) }
                         Spacer(Modifier.width(8.dp))
-                        OutlinedButton(onClick = { onTargetDb(state.targetDb + 2) }, enabled = state.normalize) { Text("+") }
+                        FilledTonalIconButton(
+                            onClick = { a.setTargetDb(state.targetDb + 1) }, enabled = state.normalize
+                        ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                    }
+                    Text(
+                        "Ayar yalnızca bundan sonra seçtiklerine uygulanır. Mevcut sesleri güncellemek için:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FilledTonalButton(
+                        onClick = a.reapplyAll,
+                        enabled = state.root == RootState.GRANTED,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Seçili sesleri yeniden işle") }
+                }
+            }
+        }
+
+        // ---- Görünüm ----
+        item { GroupHeader("Görünüm") }
+        item {
+            val dynamicOk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(3)) {
+                SettingsCard(segmentShape(0, 3), container) {
+                    Text("Tema", style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Sistemi izle", "Açık", "Koyu").forEachIndexed { i, t ->
+                            FilterChip(
+                                selected = state.themeMode == i,
+                                onClick = { a.setThemeMode(i) },
+                                label = { Text(t) },
+                                shape = CircleShape
+                            )
+                        }
                     }
                 }
-            }
-        }
-        item {
-            Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh)) {
-                Column(Modifier.padding(16.dp)) {
-                    Text("Görünüm", style = MaterialTheme.typography.titleMedium)
-                    SwitchRow("Animasyonları azalt", "Daha sakin geçişler", state.reduceMotion, onReduceMotion)
+                SettingsCard(segmentShape(1, 3), container) {
+                    SwitchRow(
+                        "Sistem renklerini kullan",
+                        if (dynamicOk) "Duvar kağıdı ve sistem temasına uyar (Material You)" else "Bu Android sürümünde desteklenmiyor",
+                        state.dynamicColor && dynamicOk, dynamicOk, a.setDynamic
+                    )
+                    val paletteActive = !(state.dynamicColor && dynamicOk)
+                    Text(
+                        "Renk paleti",
+                        style = MaterialTheme.typography.titleSmall,
+                        modifier = Modifier.alpha(if (paletteActive) 1f else 0.5f)
+                    )
+                    LazyRow(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        itemsIndexed(Palettes.list) { i, p ->
+                            Swatch(
+                                color = Palettes.swatch(p),
+                                name = p.name,
+                                selected = paletteActive && state.palette == i,
+                                onClick = { a.setPalette(i) }
+                            )
+                        }
+                    }
+                    if (!paletteActive) {
+                        Text(
+                            "Bir palet seçersen sistem renkleri otomatik kapanır.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+                SettingsCard(segmentShape(2, 3), container) {
+                    SwitchRow("Animasyonları azalt", "Daha sakin geçişler", state.reduceMotion, true, a.setReduceMotion)
                 }
             }
         }
+
+        // ---- Gelişmiş ----
+        item { GroupHeader("Gelişmiş") }
+        item {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(4)) {
+                SettingsCard(segmentShape(0, 2), container) {
+                    SwitchRow(
+                        "Kilit sesi değişince Sistem Arayüzünü yenile",
+                        "Kilit, kilit açma ve güvenilir cihaz sesleri açılışta bir kez yüklenir",
+                        state.restartSysUi, true, a.setRestartSysUi
+                    )
+                    OutlinedButton(
+                        onClick = a.restartSysUiNow,
+                        enabled = state.root == RootState.GRANTED,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Sistem Arayüzünü şimdi yenile") }
+                }
+                SettingsCard(segmentShape(1, 2), container) {
+                    Text("Tanılama", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Dosya izinleri, ayarlar, hook durumu ve SELinux reddlerini tek raporda toplar.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FilledTonalButton(
+                        onClick = a.buildReport,
+                        enabled = state.root == RootState.GRANTED,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Tanı raporu oluştur") }
+                }
+            }
+        }
+
         item {
             Text(
-                "SoundMod 0.1.0",
+                "SoundMod 0.2.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(4.dp)
+                modifier = Modifier.padding(start = 12.dp, top = 16.dp)
             )
         }
     }
 }
 
 @Composable
-private fun StatusCard(title: String, ok: Boolean, text: String, actions: @Composable () -> Unit) {
+private fun StatusCard(
+    shape: Shape,
+    container: Color,
+    title: String,
+    ok: Boolean,
+    text: String,
+    actions: @Composable () -> Unit
+) {
     Card(
-        colors = CardDefaults.cardColors(
-            containerColor = if (ok) MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceContainerHigh
-        )
+        shape = shape,
+        colors = CardDefaults.cardColors(containerColor = container),
+        modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (ok) Icons.Default.Check else Icons.Default.Warning, null)
-                Spacer(Modifier.width(8.dp))
+                Icon(
+                    if (ok) Icons.Default.Check else Icons.Default.Warning, null,
+                    tint = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                )
+                Spacer(Modifier.width(10.dp))
                 Text(title, style = MaterialTheme.typography.titleMedium)
             }
             Text(text, style = MaterialTheme.typography.bodyMedium)
@@ -457,12 +839,102 @@ private fun StatusCard(title: String, ok: Boolean, text: String, actions: @Compo
 }
 
 @Composable
-private fun SwitchRow(title: String, desc: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
+private fun SettingsCard(shape: Shape, container: Color, content: @Composable () -> Unit) {
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(containerColor = container),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            content()
+        }
+    }
+}
+
+@Composable
+private fun SwitchRow(
+    title: String,
+    desc: String,
+    checked: Boolean,
+    enabled: Boolean,
+    onChange: (Boolean) -> Unit
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clip(MaterialTheme.shapes.medium)
+            .clickable(enabled = enabled) { onChange(!checked) },
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(Modifier.weight(1f).padding(end = 12.dp)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
             Text(desc, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
-        Switch(checked = checked, onCheckedChange = onChange)
+        Switch(checked = checked, onCheckedChange = onChange, enabled = enabled)
+    }
+}
+
+@Composable
+private fun Swatch(color: Color, name: String, selected: Boolean, onClick: () -> Unit) {
+    val size by animateDpAsState(
+        targetValue = if (selected) 52.dp else 44.dp,
+        animationSpec = spring(dampingRatio = 0.5f, stiffness = 400f),
+        label = "swatch"
+    )
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .width(68.dp)
+            .clip(MaterialTheme.shapes.large)
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp)
+    ) {
+        Box(Modifier.size(52.dp), contentAlignment = Alignment.Center) {
+            Box(
+                Modifier.size(size).clip(CircleShape).background(color),
+                contentAlignment = Alignment.Center
+            ) {
+                if (selected) Icon(Icons.Default.Check, null, tint = Color.White)
+            }
+        }
+        Text(name, style = MaterialTheme.typography.labelSmall, maxLines = 1)
+    }
+}
+
+// ------------------------------------------------------------------------------------------
+// Tanı raporu
+// ------------------------------------------------------------------------------------------
+
+@Composable
+private fun ReportSheet(text: String, onDismiss: () -> Unit) {
+    val ctx = LocalContext.current
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    ModalBottomSheet(onDismissRequest = onDismiss, sheetState = sheetState) {
+        Column(
+            Modifier.fillMaxWidth().fillMaxHeight(0.9f).padding(horizontal = 20.dp).padding(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Text("Tanı raporu", style = MaterialTheme.typography.titleLarge)
+            Surface(
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                modifier = Modifier.weight(1f).fillMaxWidth()
+            ) {
+                LazyColumn(contentPadding = PaddingValues(16.dp)) {
+                    item {
+                        SelectionContainer {
+                            Text(text, fontFamily = FontFamily.Monospace, fontSize = 11.sp, lineHeight = 15.sp)
+                        }
+                    }
+                }
+            }
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = {
+                    val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                    cm.setPrimaryClip(ClipData.newPlainText("SoundMod raporu", text))
+                }) { Text("Kopyala") }
+                OutlinedButton(onClick = onDismiss) { Text("Kapat") }
+            }
+        }
     }
 }

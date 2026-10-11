@@ -30,21 +30,33 @@ Not: Klavye/dokunma sesi duymak için *Ayarlar → Ses → Dokunma sesleri* aç�
 
 ### SELinux yardımcı modülü (isteğe bağlı)
 
-SystemUI'ın `/data/system/soundmod` altındaki dosyaları okuyamadığı durumlarda (kilit sesi/ekran görüntüsü
-özel dosyayla çalmıyorsa) Ayarlar sekmesindeki **Kur** düğmesi küçük bir KernelSU/Magisk/APatch modülü kurar
-(`sepolicy.rule`). Kurduktan sonra cihazı yeniden başlat. Klavye sesleri (system_server) buna ihtiyaç duymaz.
+Ses deposu (`/data/system/soundmod`) `system_file` SELinux bağlamıyla işaretlenir; böylece SystemUI ve
+system_server dosyaları okuyabilir. Uygulama bunu kendisi yapar. Bağlam açılışta bozulursa Ayarlar sekmesindeki
+**Kur** düğmesi küçük bir KernelSU/Magisk/APatch modülü kurar; modül her açılışta bağlamı yeniden uygular.
+
+### Sesler çalmıyorsa
+
+* Ayarlar → **Sistem ses durumu**: dokunma sesleri, kilit ekranı sesleri ve şarj sesleri açık olmalı; zil modu
+  *Normal* ve sistem sesi kapalı olmamalı (titreşim/sessizde kilit ve dokunma sesleri çalmaz).
+* Kilit, kilit açma ve güvenilir cihaz sesleri Sistem Arayüzü açılırken bir kez yüklenir; uygulama değişiklikten
+  sonra Sistem Arayüzünü otomatik yeniler (Ayarlar → Gelişmiş'ten kapatılabilir).
+* Ayarlar → Gelişmiş → **Tanı raporu**: dosya izinleri, ayar değerleri, hook durumu ve SELinux reddlerini gösterir.
 
 ## Derleme
 
 * Yerelde: JDK 17+, `gradle wrapper --gradle-version 9.5.0` (bir kez), sonra `./gradlew assembleRelease`.
 * CI: `.github/workflows/build.yml` wrapper'ı kendisi üretir. `gradle-wrapper.jar` ikili dosya olduğu için repoda yok.
 * Sürüm: `versionName` `app/build.gradle.kts` içinde, `versionCode` CI çalışma numarasından gelir.
+* Normalizasyon ölçütü ffmpeg `volumedetect` "mean_volume" ile aynıdır (varsayılan hedef −30 dBFS); tepeler
+  yumuşak limiter ile sınırlanır, sonuç seviyesi bildirimde gösterilir.
 * Sürüm APK'sı debug anahtarıyla imzalanır (doğrudan kurulabilir).
 
 ## Teknik notlar
 
 * libxposed **API 101** (`minApiVersion=targetApiVersion=101`) → Vector 2.1 ve sonrası.
 * Giriş sınıfı `dev.soundmod.nothing.hook.SoundModule`; meta veriler `src/main/resources/META-INF/xposed/`.
+* system_server hook durumu `/data/system/soundmod_status` dosyasında, SystemUI hook durumu
+  `Settings.Global` `soundmod_sysui_status` anahtarında tutulur.
 * Paket adı geçici: `dev.soundmod.nothing` (değiştirirsen `java_init.list` ve `namespace` da güncellenmeli).
 * Hook'lar `try/catch` içinde; hata olursa stok ses çalar. Durum dosyaları: `/data/system/soundmod/.status_*`.
 

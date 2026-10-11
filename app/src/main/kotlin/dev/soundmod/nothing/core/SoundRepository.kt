@@ -4,49 +4,91 @@ import android.content.Context
 import android.net.Uri
 import java.io.File
 
+/** Sonuç bilgisi: seviye ölçümü (varsa) */
+data class ApplyInfo(val stats: AudioConverter.Stats?, val normalized: Boolean) {
+    fun summary(): String = stats?.summary(normalized) ?: ""
+}
+
 /** Root ile ses dosyalarını dağıtır ve Settings.Global yollarını yönetir. */
 class SoundRepository(private val ctx: Context) {
     private val prefs = ctx.getSharedPreferences("soundmod", Context.MODE_PRIVATE)
+    private val srcDir = File(ctx.filesDir, "src")
+    private val previewDir = File(ctx.filesDir, "preview")
 
     fun label(slot: SoundSlot): String? = prefs.getString("label_${slot.id}", null)
-    private fun setLabel(slot: SoundSlot, v: String?) =
+
+    private fun setLabel(slot: SoundSlot, v: String?) {
         prefs.edit().apply { if (v == null) remove("label_${slot.id}") else putString("label_${slot.id}", v) }.apply()
+    }
+
+    /** Uygulamanın okuyabildiği, önizleme için çalınacak dosya (özel/seçilmiş ses) */
+    fun previewPath(slot: SoundSlot): String? =
+        prefs.getString("prev_${slot.id}", null)?.takeIf { File(it).isFile }
+
+    /** Yeniden işlenebilen kaynak var mı */
+    fun hasSource(slot: SoundSlot): Boolean =
+        label(slot) != null && prefs.getString("srcpath_${slot.id}", null)?.let { File(it).isFile } == true
+
+    /** Ses seçilmemişken çalınacak stok dosya */
+    fun stockPath(slot: SoundSlot, library: List<SystemSound>): String? = when (slot.type) {
+        SlotType.HOOK_FILE ->
+            library.firstOrNull { it.name.equals(slot.key, ignoreCase = true) }?.path
+        SlotType.SETTINGS_GLOBAL -> {
+            val orig = prefs.getString("orig_${slot.key}", null)
+                ?: Root.run("settings get global ${slot.key}").takeIf { it.ok }?.out?.trim()
+            orig?.takeIf { it.startsWith("/") && File(it).isFile }
+        }
+    }
+
+    // ---- Depo ----
 
     fun ensureStore(): Root.Result {
         val b = Root.q(SoundPaths.BASE)
         return Root.run(
             "mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && " +
-                "chown -R system:system $b && chmod -R 755 $b && restorecon -R $b"
+                "chown -R system:system $b && chmod -R 755 $b && " +
+                "(chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b)"
         )
     }
 
     fun readStatus(): String? {
         val a = Root.run("cat ${SoundPaths.STATUS_SYSTEM}")
-        val b = Root.run("cat ${SoundPaths.STATUS_SYSUI}")
+        val b = Root.run("settings get global ${SoundPaths.SYSUI_STATUS_KEY}")
         val parts = listOfNotNull(
             a.takeIf { it.ok && it.out.isNotBlank() }?.out,
-            b.takeIf { it.ok && it.out.isNotBlank() }?.out
+            b.takeIf { it.ok && it.out.isNotBlank() && it.out.trim() != "null" }?.out
         )
         return parts.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
-    // ---- Uygulama ----
-
-    fun applySystem(slot: SoundSlot, sound: SystemSound): Result<Unit> {
-        val ext = sound.path.substringAfterLast('.', "ogg").lowercase()
-        return deploy(slot, File(sound.path), ext, "Sistem: ${sound.name}", direct = slot.type == SlotType.SETTINGS_GLOBAL)
+    fun restartSystemUi() {
+        Root.run("pkill -f com.android.systemui || killall com.android.systemui")
     }
 
-    fun applyCustom(slot: SoundSlot, uri: Uri, displayName: String, opt: AudioConverter.Options): Result<Unit> {
-        val tmp = File(ctx.cacheDir, "${slot.key}.wav")
+    // ---- Uygulama ----
+
+    fun applySystem(slot: SoundSlot, sound: SystemSound, opt: AudioConverter.Options): Result<ApplyInfo> =
+        applyFrom(slot, File(sound.path), "Sistem: ${sound.name}", opt)
+
+    fun applyCustom(slot: SoundSlot, uri: Uri, displayName: String, opt: AudioConverter.Options): Result<ApplyInfo> {
         return try {
-            AudioConverter.toWav(ctx, uri, tmp, opt)
-            deploy(slot, tmp, "wav", "Dosya: $displayName", direct = false)
+            srcDir.mkdirs()
+            val copy = File(srcDir, slot.id)
+            ctx.contentResolver.openInputStream(uri)?.use { input ->
+                copy.outputStream().use { input.copyTo(it) }
+            } ?: return Result.failure(IllegalStateException("Dosya açılamadı"))
+            applyFrom(slot, copy, "Dosya: $displayName", opt)
         } catch (e: Exception) {
             Result.failure(e)
-        } finally {
-            tmp.delete()
         }
+    }
+
+    /** Kayıtlı kaynağı güncel normalize ayarıyla yeniden uygular */
+    fun reprocess(slot: SoundSlot, opt: AudioConverter.Options): Result<ApplyInfo> {
+        val label = label(slot) ?: return Result.failure(IllegalStateException("Özel ses yok"))
+        val src = prefs.getString("srcpath_${slot.id}", null)?.let { File(it) }
+        if (src == null || !src.isFile) return Result.failure(IllegalStateException("Kaynak dosya yok"))
+        return applyFrom(slot, src, label, opt)
     }
 
     fun reset(slot: SoundSlot): Result<Unit> {
@@ -62,24 +104,64 @@ class SoundRepository(private val ctx: Context) {
         }
         if (!r.ok) return Result.failure(IllegalStateException(r.out))
         setLabel(slot, null)
+        prefs.edit().remove("prev_${slot.id}").remove("srcpath_${slot.id}").apply()
+        File(srcDir, slot.id).delete()
+        File(previewDir, "${slot.id}.wav").delete()
         return Result.success(Unit)
     }
 
+    // ---- İç ----
+
     /**
-     * @param direct true ise kaynak dosyayı kopyalamadan yolunu doğrudan Settings'e yazar
-     *               (yalnızca sistem dosyaları için; herkesin okuyabildiği yollar)
+     * Kaynak dosyayı (normalize açıksa dönüştürüp) depoya koyar.
+     * Normalize kapalıysa dosya olduğu gibi kopyalanır; Settings yuvalarında sistem dosyaları
+     * kopyalanmadan doğrudan yolla gösterilir.
      */
-    private fun deploy(slot: SoundSlot, src: File, ext: String, label: String, direct: Boolean): Result<Unit> {
+    private fun applyFrom(slot: SoundSlot, src: File, label: String, opt: AudioConverter.Options): Result<ApplyInfo> {
+        return try {
+            if (opt.normalize) {
+                previewDir.mkdirs()
+                val wav = File(previewDir, "${slot.id}.wav")
+                val stats = AudioConverter.toWav(ctx, Uri.fromFile(src), wav, opt)
+                val r = deploy(slot, wav, "wav", direct = false)
+                if (r.isFailure) return Result.failure(r.exceptionOrNull()!!)
+                remember(slot, label, wav.absolutePath, src.absolutePath)
+                Result.success(ApplyInfo(stats, true))
+            } else {
+                val ext = src.extension.lowercase().ifBlank { "ogg" }
+                val isSystem = src.absolutePath.startsWith("/system") || src.absolutePath.startsWith("/product") ||
+                    src.absolutePath.startsWith("/vendor") || src.absolutePath.startsWith("/odm") ||
+                    src.absolutePath.startsWith("/my_")
+                val r = deploy(slot, src, ext, direct = isSystem && slot.type == SlotType.SETTINGS_GLOBAL)
+                if (r.isFailure) return Result.failure(r.exceptionOrNull()!!)
+                remember(slot, label, src.absolutePath, src.absolutePath)
+                Result.success(ApplyInfo(null, false))
+            }
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
+    private fun remember(slot: SoundSlot, label: String, previewPath: String, srcPath: String) {
+        setLabel(slot, label)
+        prefs.edit().putString("prev_${slot.id}", previewPath).putString("srcpath_${slot.id}", srcPath).apply()
+    }
+
+    private fun deploy(slot: SoundSlot, src: File, ext: String, direct: Boolean): Result<Unit> {
         val st = ensureStore()
         if (!st.ok) return Result.failure(IllegalStateException("Depo hazırlanamadı: ${st.out}"))
+
+        val fix = { dest: String ->
+            "chown system:system ${Root.q(dest)} && chmod 644 ${Root.q(dest)} && " +
+                "(chcon ${SoundPaths.CONTEXT} ${Root.q(dest)} || restorecon ${Root.q(dest)})"
+        }
 
         val r = when (slot.type) {
             SlotType.HOOK_FILE -> {
                 val dest = "${SoundPaths.OVERRIDE_DIR}/${slot.key}.$ext"
                 Root.run(
                     "rm -f ${Root.q(SoundPaths.OVERRIDE_DIR)}/${slot.key}.*; " +
-                        "cp ${Root.q(src.absolutePath)} ${Root.q(dest)} && chown system:system ${Root.q(dest)} && " +
-                        "chmod 644 ${Root.q(dest)} && restorecon ${Root.q(dest)}"
+                        "cp ${Root.q(src.absolutePath)} ${Root.q(dest)} && ${fix(dest)}"
                 )
             }
             SlotType.SETTINGS_GLOBAL -> {
@@ -90,15 +172,13 @@ class SoundRepository(private val ctx: Context) {
                     val dest = "${SoundPaths.FILES_DIR}/${slot.key}.$ext"
                     Root.run(
                         "rm -f ${Root.q(SoundPaths.FILES_DIR)}/${slot.key}.*; " +
-                            "cp ${Root.q(src.absolutePath)} ${Root.q(dest)} && chown system:system ${Root.q(dest)} && " +
-                            "chmod 644 ${Root.q(dest)} && restorecon ${Root.q(dest)} && " +
+                            "cp ${Root.q(src.absolutePath)} ${Root.q(dest)} && ${fix(dest)} && " +
                             "settings put global ${slot.key} ${Root.q(dest)}"
                     )
                 }
             }
         }
         if (!r.ok) return Result.failure(IllegalStateException(r.out.ifBlank { "Komut başarısız (${r.code})" }))
-        setLabel(slot, label)
         return Result.success(Unit)
     }
 

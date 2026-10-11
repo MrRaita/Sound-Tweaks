@@ -1,7 +1,9 @@
 package dev.soundmod.nothing.hook
 
 import android.media.AudioAttributes
+import android.app.Application
 import android.media.MediaPlayer
+import android.provider.Settings
 import android.util.Log
 import dev.soundmod.nothing.core.SoundPaths
 import io.github.libxposed.api.XposedModule
@@ -45,7 +47,7 @@ class SoundModule : XposedModule() {
             status.append("Screenshot HATA: ${t.javaClass.simpleName}: ${t.message}")
             log(Log.ERROR, TAG, "Screenshot hook failed", t)
         }
-        writeStatus(SoundPaths.STATUS_SYSUI, status.toString())
+        reportSysUi(status.toString())
     }
 
     // ---------------------------------------------------------------------------------------
@@ -121,6 +123,29 @@ class SoundModule : XposedModule() {
             if (f.isFile && f.length() > 0 && f.canRead()) return f.absolutePath
         }
         return null
+    }
+
+    /**
+     * SystemUI /data/system'e yazamayabilir; durumu Settings.Global'a yazarız (SystemUI'nin yetkisi var).
+     * Uygulama bağlamı henüz oluşmamış olabileceğinden hazır olana kadar bekler.
+     */
+    private fun reportSysUi(text: String) {
+        val full = "$text [$frameworkName $frameworkVersion, API $apiVersion]"
+        Thread {
+            repeat(120) {
+                try {
+                    val app = Class.forName("android.app.ActivityThread")
+                        .getMethod("currentApplication").invoke(null) as? Application
+                    if (app != null) {
+                        Settings.Global.putString(app.contentResolver, SoundPaths.SYSUI_STATUS_KEY, full)
+                        return@Thread
+                    }
+                } catch (t: Throwable) {
+                    // tekrar dene
+                }
+                Thread.sleep(500)
+            }
+        }.start()
     }
 
     private fun writeStatus(path: String, text: String) {

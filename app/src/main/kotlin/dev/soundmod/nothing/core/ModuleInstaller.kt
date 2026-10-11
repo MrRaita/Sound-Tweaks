@@ -8,7 +8,7 @@ import java.util.zip.ZipOutputStream
 /** assets/ksu-module içeriğini zip'leyip root yöneticisine (KernelSU/Magisk/APatch) kurdurur. */
 object ModuleInstaller {
     private const val MODULE_ID = "soundmod-selinux"
-    private val FILES = listOf("module.prop", "sepolicy.rule", "service.sh")
+    private val FILES = listOf("module.prop", "service.sh")
 
     fun isInstalled(): Boolean = Root.run("[ -d /data/adb/modules/$MODULE_ID ] && echo yes").out.contains("yes")
 

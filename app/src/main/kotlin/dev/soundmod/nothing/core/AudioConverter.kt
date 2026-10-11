@@ -13,13 +13,40 @@ import java.nio.ByteOrder
 import kotlin.math.abs
 import kotlin.math.log10
 import kotlin.math.pow
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
+import kotlin.math.tanh
 
-/** Herhangi bir ses dosyasını çözüp (gerekirse kırpıp/normalize edip) PCM16 WAV yazar. */
+/**
+ * Herhangi bir ses dosyasını çözüp (gerekirse kırpıp/normalize edip) PCM16 WAV yazar.
+ *
+ * Normalizasyon ölçütü, ffmpeg `volumedetect`'in "mean_volume" değeriyle aynıdır
+ * (tüm dosyanın RMS'i, dBFS). Hedefe ulaşmak için gereken kazanç tepeleri taşırıyorsa
+ * sert kırpma yerine yumuşak limiter uygulanır.
+ */
 object AudioConverter {
     data class Options(val normalize: Boolean, val targetDb: Int, val maxSeconds: Int = 6)
 
-    fun toWav(ctx: Context, uri: Uri, out: File, opt: Options) {
+    data class Stats(
+        val beforeDb: Double,
+        val afterDb: Double,
+        val peakDb: Double,
+        val gainDb: Double,
+        val limited: Boolean
+    ) {
+        fun summary(normalized: Boolean): String {
+            if (!normalized) return "Seviye ${fmt(beforeDb)} dBFS (normalize kapalı)"
+            val change = if (abs(gainDb) < 0.15) "değişmedi" else "${fmt(beforeDb)} → ${fmt(afterDb)} dBFS"
+            return "Seviye $change, tepe ${fmt(peakDb)} dB" + if (limited) ", tepeler yumuşatıldı" else ""
+        }
+
+        private fun fmt(v: Double) = String.format(java.util.Locale.US, "%.1f", v)
+    }
+
+    private const val LIMIT_START = 0.72
+    private const val LIMIT_CEIL = 0.97
+
+    fun toWav(ctx: Context, uri: Uri, out: File, opt: Options): Stats {
         val ex = MediaExtractor()
         ex.setDataSource(ctx, uri, null)
         var track = -1
@@ -92,27 +119,44 @@ object AudioConverter {
         val usable = minOf(raw.size.toLong(), maxBytes).toInt() and 1.inv()
         val samples = ShortArray(usable / 2)
         ByteBuffer.wrap(raw, 0, usable).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(samples)
+        require(samples.isNotEmpty()) { "Ses verisi boş" }
 
-        if (opt.normalize && samples.isNotEmpty()) applyNormalization(samples, opt.targetDb)
+        val before = meanDb(samples)
+        var gainDb = 0.0
+        var limited = false
+        if (opt.normalize && before > -90.0) {
+            gainDb = (opt.targetDb - before).coerceIn(-30.0, 24.0)
+            val gain = 10.0.pow(gainDb / 20.0)
+            for (i in samples.indices) {
+                var x = samples[i] / 32768.0 * gain
+                val a = abs(x)
+                if (a > LIMIT_START) {
+                    limited = true
+                    val y = LIMIT_START + (LIMIT_CEIL - LIMIT_START) * tanh((a - LIMIT_START) / (LIMIT_CEIL - LIMIT_START))
+                    x = if (x < 0) -y else y
+                }
+                samples[i] = (x * 32767.0).roundToInt().coerceIn(-32768, 32767).toShort()
+            }
+        }
+        val stats = Stats(before, meanDb(samples), peakDb(samples), gainDb, limited)
         writeWav(out, samples, sampleRate, channels)
+        return stats
     }
 
-    private fun applyNormalization(s: ShortArray, targetDb: Int) {
+    private fun meanDb(s: ShortArray): Double {
         var sumSq = 0.0
-        var peak = 0
         for (v in s) {
-            val d = v.toDouble() / 32768.0
+            val d = v / 32768.0
             sumSq += d * d
-            if (abs(v.toInt()) > peak) peak = abs(v.toInt())
         }
         val rms = sqrt(sumSq / s.size)
-        if (rms < 1e-6 || peak == 0) return
-        val rmsDb = 20.0 * log10(rms)
-        var gain = 10.0.pow((targetDb - rmsDb) / 20.0)
-        // Tepe 0.95'i geçmesin
-        val maxGain = 0.95 * 32768.0 / peak
-        if (gain > maxGain) gain = maxGain
-        for (i in s.indices) s[i] = (s[i] * gain).toInt().coerceIn(-32768, 32767).toShort()
+        return if (rms < 1e-6) -120.0 else 20.0 * log10(rms)
+    }
+
+    private fun peakDb(s: ShortArray): Double {
+        var p = 0
+        for (v in s) if (abs(v.toInt()) > p) p = abs(v.toInt())
+        return if (p == 0) -120.0 else 20.0 * log10(p / 32768.0)
     }
 
     private fun writeWav(f: File, s: ShortArray, rate: Int, ch: Int) {
