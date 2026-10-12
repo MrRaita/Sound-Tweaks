@@ -1,0 +1,162 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+  ~ Copyright (c) 2018 Hai Zhang <dreaming.in.code.zh@gmail.com>
+  ~ All Rights Reserved.
+  -->
+
+<resources>
+
+    <string name="pref_default_value_empty" />
+
+    <string name="pref_key_storages">key_storages</string>
+    <string name="pref_key_file_list_default_directory">key_file_list_default_directory</string>
+    <string name="pref_key_file_list_persistent_drawer_open">key_file_list_persistent_drawer_open</string>
+    <bool name="pref_default_value_file_list_persistent_drawer_open">true</bool>
+    <string name="pref_key_file_list_show_hidden_files">key_file_list_show_hidden_files</string>
+    <bool name="pref_default_value_file_list_show_hidden_files">false</bool>
+    <string name="pref_key_file_list_view_type">key_file_list_view_type</string>
+    <string name="pref_default_value_file_list_view_type">0</string>
+    <string name="pref_key_file_list_sort_options">key_file_list_sort_options</string>
+    <string name="pref_key_create_archive_type">key_create_archive_type</string>
+
+    <string name="pref_key_ftp_server_state">key_ftp_server_state</string>
+    <bool name="pref_visible_ftp_server_add_tile">false</bool>
+    <string name="pref_key_ftp_server_anonymous_login">key_ftp_server_anonymous_login</string>
+    <bool name="pref_default_value_ftp_server_anonymous_login">true</bool>
+    <string name="pref_key_ftp_server_username">key_ftp_server_username</string>
+    <string name="pref_default_value_ftp_server_username">admin</string>
+    <string name="pref_key_ftp_server_password">key_ftp_server_password</string>
+    <string name="pref_key_ftp_server_port">key_ftp_server_port</string>
+    <integer name="pref_default_value_ftp_server_port">2121</integer>
+    <string name="pref_key_ftp_server_home_directory">key_ftp_server_home_directory</string>
+    <string name="pref_key_ftp_server_writable">key_ftp_server_writable</string>
+    <bool name="pref_default_value_ftp_server_writable">true</bool>
+
+    <string name="pref_key_locale">key_locale</string>
+    <string name="pref_key_theme_color">key_theme_color</string>
+    <string name="pref_default_value_theme_color">0</string>
+    <string name="pref_key_material_design_3">key_material_design_3</string>
+    <bool name="pref_default_value_material_design_3">false</bool>
+    <string name="pref_key_night_mode">key_night_mode</string>
+    <string name="pref_default_value_night_mode">0</string>
+    <string-array name="pref_entry_values_night_mode">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+    </string-array>
+    <string name="pref_key_black_night_mode">key_black_night_mode</string>
+    <bool name="pref_default_value_black_night_mode">false</bool>
+    <string name="pref_key_file_list_animation">key_file_list_animation</string>
+    <bool name="pref_default_value_file_list_animation">true</bool>
+    <string name="pref_key_file_name_ellipsize">key_file_name_ellipsize</string>
+    <string name="pref_default_value_file_name_ellipsize">1</string>
+    <string-array name="pref_entry_values_file_name_ellipsize">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+    <string name="pref_key_search_return_previous">key_search_return_previous</string>
+    <bool name="pref_default_value_search_return_previous">true</bool>
+    <string name="pref_key_search_return_next">key_search_return_next</string>
+    <bool name="pref_default_value_search_return_next">true</bool>
+    <string name="pref_key_search_return_max_changes">key_search_return_max_changes</string>
+    <integer name="pref_default_value_search_return_max_changes">10</integer>
+    <string name="pref_key_file_size_binary">key_file_size_binary</string>
+    <bool name="pref_default_value_file_size_binary">false</bool>
+    <string name="pref_key_file_list_grid_columns">key_file_list_grid_columns</string>
+    <string name="pref_default_value_file_list_grid_columns">0</string>
+    <string-array name="pref_entry_values_file_list_grid_columns">
+        <item>0</item>
+        <item>2</item>
+        <item>3</item>
+        <item>4</item>
+        <item>5</item>
+        <item>6</item>
+    </string-array>
+    <string name="pref_key_file_index_enabled">key_file_index_enabled</string>
+    <bool name="pref_default_value_file_index_enabled">false</bool>
+    <string name="pref_key_file_index_prompt_shown">key_file_index_prompt_shown</string>
+    <bool name="pref_default_value_file_index_prompt_shown">false</bool>
+    <string name="pref_key_file_index_folders">key_file_index_folders</string>
+    <string name="pref_key_file_index_rebuild">key_file_index_rebuild</string>
+    <string name="pref_key_archive_invalid_char_mode">key_archive_invalid_char_mode</string>
+    <string name="pref_default_value_archive_invalid_char_mode">lookalike</string>
+    <string-array name="pref_entry_values_archive_invalid_char_mode">
+        <item>lookalike</item>
+        <item>underscore</item>
+    </string-array>
+    <string name="pref_key_file_list_density">key_file_list_density</string>
+    <string name="pref_default_value_file_list_density">0</string>
+    <string-array name="pref_entry_values_file_list_density">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+    <string name="pref_key_standard_directory_settings">key_standard_directories</string>
+    <string name="pref_key_bookmark_directories">key_bookmark_directories</string>
+    <string name="pref_key_root_strategy">key_root_strategy</string>
+    <string name="pref_default_value_root_strategy">1</string>
+    <string-array name="pref_entry_values_root_strategy">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+        <item>3</item>
+    </string-array>
+    <string name="pref_key_archive_file_name_encoding">key_archive_file_name_encoding</string>
+    <string name="pref_default_value_archive_file_name_encoding">UTF-8</string>
+    <string name="pref_key_open_apk_default_action">key_open_apk_default_action</string>
+    <string name="pref_default_value_open_apk_default_action">2</string>
+    <string-array name="pref_entry_values_open_apk_default_action">
+        <item>0</item>
+        <item>1</item>
+        <item>2</item>
+    </string-array>
+    <string name="pref_key_show_pdf_thumbnail_pre_28">key_show_pdf_thumbnail_pre_28</string>
+    <bool name="pref_default_value_show_pdf_thumbnail_pre_28">false</bool>
+    <bool name="pref_visible_show_pdf_thumbnail_pre_28">true</bool>
+    <string name="pref_key_read_remote_files_for_thumbnail">key_read_remote_files_for_thumbnail</string>
+    <bool name="pref_default_value_read_remote_files_for_thumbnail">true</bool>
+    <string name="pref_key_code_editor_syntax_highlighting">key_code_editor_syntax_highlighting</string>
+    <bool name="pref_default_value_code_editor_syntax_highlighting">true</bool>
+    <string name="pref_key_code_editor_word_wrap">key_code_editor_word_wrap</string>
+    <bool name="pref_default_value_code_editor_word_wrap">false</bool>
+    <string name="pref_key_code_editor_line_numbers">key_code_editor_line_numbers</string>
+    <string name="pref_default_value_code_editor_line_numbers">auto</string>
+    <string name="pref_key_code_editor_sticky_scroll">key_code_editor_sticky_scroll</string>
+    <bool name="pref_default_value_code_editor_sticky_scroll">true</bool>
+    <string name="pref_key_code_editor_font_size">key_code_editor_font_size</string>
+    <string name="pref_default_value_code_editor_font_size">14</string>
+    <string name="pref_key_editor_toolbar_settings">key_editor_toolbar_settings</string>
+    <string name="pref_key_text_editor_syntax_highlighting">key_text_editor_syntax_highlighting</string>
+    <bool name="pref_default_value_text_editor_syntax_highlighting">true</bool>
+    <string name="pref_key_text_editor_word_wrap">key_text_editor_word_wrap</string>
+    <bool name="pref_default_value_text_editor_word_wrap">false</bool>
+    <string name="pref_key_text_editor_line_numbers">key_text_editor_line_numbers</string>
+    <string name="pref_default_value_text_editor_line_numbers">auto</string>
+    <string-array name="pref_entry_values_text_editor_line_numbers">
+        <item>auto</item>
+        <item>on</item>
+        <item>off</item>
+    </string-array>
+    <string name="pref_key_text_editor_sticky_scroll">key_text_editor_sticky_scroll</string>
+    <bool name="pref_default_value_text_editor_sticky_scroll">true</bool>
+    <string name="pref_key_text_editor_font_size">key_text_editor_font_size</string>
+    <string name="pref_default_value_text_editor_font_size">16</string>
+    <string-array name="pref_entry_values_text_editor_font_size">
+        <item>12</item>
+        <item>14</item>
+        <item>16</item>
+        <item>18</item>
+        <item>20</item>
+    </string-array>
+    <string name="pref_key_text_editor_symbols_open">key_text_editor_symbols_open</string>
+    <bool name="pref_default_value_text_editor_symbols_open">false</bool>
+    <string name="pref_key_text_editor_page_guide">key_text_editor_page_guide</string>
+    <bool name="pref_default_value_text_editor_page_guide">true</bool>
+
+    <string name="pref_key_editor_appearance_settings">key_editor_appearance_settings</string>
+</resources>
