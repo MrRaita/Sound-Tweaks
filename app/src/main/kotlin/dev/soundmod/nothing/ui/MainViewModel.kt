@@ -1,13 +1,20 @@
 package dev.soundmod.nothing.ui
 
 import android.app.Application
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
+import android.database.ContentObserver
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.net.Uri
 import android.provider.OpenableColumns
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.soundmod.nothing.core.ApplyInfo
@@ -65,7 +72,6 @@ data class UiState(
     val themeMode: Int = 0,
     val dynamicColor: Boolean = true,
     val palette: Int = 0,
-    val restartSysUi: Boolean = true,
     val sys: SysState = SysState(),
     val report: String? = null
 )
@@ -83,7 +89,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             themeMode = prefs.getInt("theme_mode", 0),
             dynamicColor = prefs.getBoolean("dynamic", true),
             palette = prefs.getInt("palette", 0),
-            restartSysUi = prefs.getBoolean("restart_sysui", true),
             sys = readSys()
         )
     )
@@ -98,9 +103,35 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var mp: MediaPlayer? = null
     private var ticker: Job? = null
 
+    /** Zil modu / ses seviyesi değişince Ayarlar'daki durum kartı anında güncellensin */
+    private val sysReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            refreshSys()
+        }
+    }
+    private val sysObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+        override fun onChange(selfChange: Boolean) {
+            refreshSys()
+        }
+    }
+
     init {
         refreshAll()
         loadLibrary()
+        try {
+            val f = IntentFilter().apply {
+                addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
+                addAction("android.media.VOLUME_CHANGED_ACTION")
+                addAction("android.media.STREAM_MUTE_CHANGED_ACTION")
+            }
+            ContextCompat.registerReceiver(app(), sysReceiver, f, ContextCompat.RECEIVER_NOT_EXPORTED)
+            val cr = app().contentResolver
+            cr.registerContentObserver(Settings.System.getUriFor(Settings.System.SOUND_EFFECTS_ENABLED), false, sysObserver)
+            cr.registerContentObserver(Settings.System.getUriFor("lockscreen_sounds_enabled"), false, sysObserver)
+            cr.registerContentObserver(Settings.Global.getUriFor("charging_sounds_enabled"), false, sysObserver)
+        } catch (e: Exception) {
+            // canlı güncelleme olmazsa sekmeye girince yine yenilenir
+        }
     }
 
     private fun readSlots() = SoundCatalog.slots.map { SlotState(it, repo.label(it)) }
@@ -193,11 +224,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(palette = v, dynamicColor = false) }
     }
 
-    fun setRestartSysUi(v: Boolean) {
-        prefs.edit().putBoolean("restart_sysui", v).apply()
-        _state.update { it.copy(restartSysUi = v) }
-    }
-
     fun setSystemToggle(kind: SysToggle, on: Boolean) = work {
         val v = if (on) 1 else 0
         val cmd = when (kind) {
@@ -239,7 +265,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         var ok = 0
         var fail = 0
         var needReload = false
-        var needSysUi = false
         var last: ApplyInfo? = null
         for (ss in readSlots()) {
             if (!repo.hasSource(ss.slot)) continue
@@ -248,13 +273,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ok++
                     last = it
                     if (ss.slot.reload) needReload = true
-                    if (ss.slot.restartSysUi) needSysUi = true
                 },
                 onFailure = { fail++ }
             )
         }
         if (needReload) reloadEffects()
-        if (needSysUi && _state.value.restartSysUi) repo.restartSystemUi()
         _state.update { it.copy(slots = readSlots()) }
         msg(
             when {
@@ -267,14 +290,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun afterChange(slot: SoundSlot, text: String, info: ApplyInfo?) {
         if (slot.reload) reloadEffects()
-        var extra = ""
-        if (slot.restartSysUi && _state.value.restartSysUi) {
-            repo.restartSystemUi()
-            extra = " · Sistem Arayüzü yenilendi"
-        }
         _state.update { it.copy(slots = readSlots()) }
         val level = info?.summary()?.takeIf { it.isNotBlank() }?.let { "\n$it" } ?: ""
-        msg(text + extra + level)
+        msg(text + level)
     }
 
     private fun work(block: () -> Unit) {
@@ -433,8 +451,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun buildReport() = work {
-        val keys = SoundCatalog.slots.filter { it.type == dev.soundmod.nothing.core.SlotType.SETTINGS_GLOBAL }
-            .joinToString(" ") { it.key }
+        val keys = "lock_sound unlock_sound trusted_sound low_battery_sound charging_started_sound " +
+            "wireless_charging_started_sound desk_dock_sound car_dock_sound"
         val cmd = """
             echo "== build =="; getprop ro.build.display.id
             echo "== depo =="; ls -laZ ${SoundPaths.BASE} ${SoundPaths.OVERRIDE_DIR} ${SoundPaths.FILES_DIR} 2>&1
@@ -443,11 +461,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             echo "lockscreen_sounds_enabled=${'$'}(settings get system lockscreen_sounds_enabled)"
             echo "sound_effects_enabled=${'$'}(settings get system sound_effects_enabled)"
             echo "charging_sounds_enabled=${'$'}(settings get global charging_sounds_enabled)"
+            echo "== varsayilan dosyalar =="
+            for k in $keys; do v=${'$'}(settings get global ${'$'}k); echo "${'$'}k -> ${'$'}(ls -lZ ${'$'}v 2>&1)"; done
+            echo "lock/unlock/trusted stok dosyalar:"; ls -lZ /product/media/audio/ui/ 2>&1 | grep -i -E "lock|trusted"
             echo "== hook durumu =="; cat ${SoundPaths.STATUS_SYSTEM} 2>&1; echo
             settings get global ${SoundPaths.SYSUI_STATUS_KEY}
+            echo "son SystemUI olayi:"; settings get global ${SoundPaths.SYSUI_LAST_KEY}
             echo "== sistem arayuzu =="; pidof com.android.systemui
             echo "== selinux (son reddedilenler) =="
-            logcat -d -b all 2>/dev/null | grep -i "avc:.*denied" | grep -i -E "soundmod|systemui|system_file" | tail -15
+            logcat -d -b all 2>/dev/null | grep -i "avc:.*denied" | grep -i -E "scontext=u:r:(systemui_app|system_server|system_app|platform_app)" | tail -15
             echo "== bitti =="
         """.trimIndent()
         val r = Root.run(cmd)
@@ -460,6 +482,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     override fun onCleared() {
         release()
+        runCatching { app().unregisterReceiver(sysReceiver) }
+        runCatching { app().contentResolver.unregisterContentObserver(sysObserver) }
         super.onCleared()
     }
 }

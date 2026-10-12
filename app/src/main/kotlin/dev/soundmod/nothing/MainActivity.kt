@@ -23,6 +23,11 @@ import dev.soundmod.nothing.ui.UiActions
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
 
+    override fun onResume() {
+        super.onResume()
+        vm.refreshSys()
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -63,7 +68,6 @@ class MainActivity : ComponentActivity() {
                     setThemeMode = vm::setThemeMode,
                     setDynamic = vm::setDynamic,
                     setPalette = vm::setPalette,
-                    setRestartSysUi = vm::setRestartSysUi,
                     restartSysUiNow = vm::restartSysUiNow,
                     setSystemToggle = vm::setSystemToggle,
                     installModule = vm::installModule,

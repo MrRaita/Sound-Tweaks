@@ -46,6 +46,7 @@ class SoundRepository(private val ctx: Context) {
         val b = Root.q(SoundPaths.BASE)
         return Root.run(
             "mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && " +
+                "rm -f ${Root.q(SoundPaths.BASE + "/.status_system")} && " +
                 "chown -R system:system $b && chmod -R 755 $b && " +
                 "(chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b)"
         )

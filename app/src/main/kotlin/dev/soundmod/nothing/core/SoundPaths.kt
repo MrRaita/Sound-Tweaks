@@ -12,6 +12,8 @@ object SoundPaths {
     const val STATUS_SYSTEM = "/data/system/soundmod_status"
     /** SystemUI hook durumu Settings.Global anahtarına yazılır */
     const val SYSUI_STATUS_KEY = "soundmod_sysui_status"
+    /** SystemUI hook'unun son olayı (tanılama için) */
+    const val SYSUI_LAST_KEY = "soundmod_sysui_last"
     /** Herkesin (SystemUI dahil) okuyabildiği SELinux tipi */
     const val CONTEXT = "u:object_r:system_file:s0"
 

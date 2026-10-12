@@ -1,3 +1,0 @@
-# SystemUI, SoundMod'un /data/system/soundmod altına koyduğu ses dosyalarını okuyabilsin
-allow systemui_app system_data_file dir { search getattr open read }
-allow systemui_app system_data_file file { getattr open read map }

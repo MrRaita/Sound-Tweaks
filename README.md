@@ -11,7 +11,8 @@ Hedef: Nothing Phone (4a) · Nothing OS 4.1 · Android 16 (diğer AOSP tabanlı 
 |---|---|
 | Klavye tuşları, dokunma tıkı | `system_server` içinde `SoundEffectsHelper.getResourceFilePath` hook'u → `/data/system/soundmod/override/<StokAdı>.*` varsa onu döndürür |
 | Ekran görüntüsü | SystemUI içinde `ScreenshotSoundProviderImpl.getScreenshotSound` hook'u |
-| Kilit, kilit açma, güvenilir cihaz, düşük pil, şarj, kablosuz şarj, dock | Root ile `settings put global <anahtar> <dosya yolu>` (hook gerekmez) |
+| Kilitleme, kilit açma, güvenilir cihaz | SystemUI içinde `KeyguardViewMediator.playSounds` / `playTrustedSound` hook'u: özel dosya varsa orijinal çağrı atlanır ve ses SoundMod tarafından çalınır (stok dosya olmasa da çalışır) |
+| Düşük pil, şarj, kablosuz şarj, dock | Root ile `settings put global <anahtar> <dosya yolu>` (sistem bu yolu çalarken okur) |
 
 * Uygulama `/product/media/audio` (ve diğer bilinen dizinleri) tarar, sesleri listeler, önizletir.
 * Sesi **sistem seslerinden** ya da **kendi dosyandan** seçebilirsin. Kendi dosyaların WAV'a çevrilir,
@@ -36,10 +37,11 @@ system_server dosyaları okuyabilir. Uygulama bunu kendisi yapar. Bağlam açıl
 
 ### Sesler çalmıyorsa
 
-* Ayarlar → **Sistem ses durumu**: dokunma sesleri, kilit ekranı sesleri ve şarj sesleri açık olmalı; zil modu
+* Ayarlar → **Sistem ses anahtarları**: dokunma sesleri, kilit ekranı sesleri ve şarj sesleri açık olmalı; zil modu
   *Normal* ve sistem sesi kapalı olmamalı (titreşim/sessizde kilit ve dokunma sesleri çalmaz).
-* Kilit, kilit açma ve güvenilir cihaz sesleri Sistem Arayüzü açılırken bir kez yüklenir; uygulama değişiklikten
-  sonra Sistem Arayüzünü otomatik yeniler (Ayarlar → Gelişmiş'ten kapatılabilir).
+* Kilit sesleri sistem ayarında kapalıysa (Kilit ekranı sesleri) SoundMod da stok davranışı korur ve çalmaz.
+* Sistem Arayüzü kendiliğinden yenilenmez; modülü yeni etkinleştirdiysen Ayarlar → Gelişmiş'ten onay vererek
+  yenileyebilirsin.
 * Ayarlar → Gelişmiş → **Tanı raporu**: dosya izinleri, ayar değerleri, hook durumu ve SELinux reddlerini gösterir.
 
 ## Derleme
@@ -56,7 +58,7 @@ system_server dosyaları okuyabilir. Uygulama bunu kendisi yapar. Bağlam açıl
 * libxposed **API 101** (`minApiVersion=targetApiVersion=101`) → Vector 2.1 ve sonrası.
 * Giriş sınıfı `dev.soundmod.nothing.hook.SoundModule`; meta veriler `src/main/resources/META-INF/xposed/`.
 * system_server hook durumu `/data/system/soundmod_status` dosyasında, SystemUI hook durumu
-  `Settings.Global` `soundmod_sysui_status` anahtarında tutulur.
+  `Settings.Global` `soundmod_sysui_status` anahtarında, SystemUI'ın son olayı `soundmod_sysui_last` anahtarında tutulur.
 * Paket adı geçici: `dev.soundmod.nothing` (değiştirirsen `java_init.list` ve `namespace` da güncellenmeli).
 * Hook'lar `try/catch` içinde; hata olursa stok ses çalar. Durum dosyaları: `/data/system/soundmod/.status_*`.
 

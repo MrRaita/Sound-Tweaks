@@ -60,20 +60,25 @@ fun segmentShape(index: Int, count: Int, big: Dp = 28.dp, small: Dp = 6.dp): Sha
     return RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom)
 }
 
-/** Liste öğeleri sırayla yaylanarak belirir. */
+/**
+ * Liste öğeleri ilk açılışta sırayla yaylanarak belirir. Her anahtar için yalnızca bir kez (sekme
+ * ya da liste yeniden oluşsa da tekrar oynamaz) ve yalnızca ilk birkaç öğede çalışır; hızlı kaydırırken
+ * ekrana giren öğeler anında görünür, boş satır kalmaz.
+ */
 @Composable
-fun Modifier.staggerIn(index: Int): Modifier {
+fun Modifier.staggerIn(index: Int, seen: MutableSet<Any>, key: Any): Modifier {
     val reduce = LocalReduceMotion.current
-    val p = remember { Animatable(if (reduce) 1f else 0f) }
+    val animate = remember { !reduce && index < 8 && seen.add(key) }
+    val p = remember { Animatable(if (animate) 0f else 1f) }
     LaunchedEffect(Unit) {
-        if (!reduce) {
-            delay(index.coerceAtMost(10) * 40L)
-            p.animateTo(1f, spring(dampingRatio = 0.75f, stiffness = Spring.StiffnessLow))
+        if (animate) {
+            delay(index * 30L)
+            p.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium))
         }
     }
     return this.graphicsLayer {
         alpha = p.value.coerceIn(0f, 1f)
-        translationY = (1f - p.value) * 48f
+        translationY = (1f - p.value) * 32f
     }
 }
 

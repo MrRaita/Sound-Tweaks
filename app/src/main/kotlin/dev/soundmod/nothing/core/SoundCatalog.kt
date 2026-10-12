@@ -20,9 +20,7 @@ data class SoundSlot(
     /** Değişiklikten sonra ses efektlerini yeniden yükle */
     val reload: Boolean = false,
     /** Denemek için çalınabilir AudioManager.FX_* sabiti */
-    val fx: Int? = null,
-    /** Ses Sistem Arayüzü açılırken bir kez yüklenir: değişince SystemUI yenilenmeli */
-    val restartSysUi: Boolean = false
+    val fx: Int? = null
 )
 
 object SoundCatalog {
@@ -51,12 +49,10 @@ object SoundCatalog {
         SoundSlot("screenshot", "Ekran görüntüsü", "Ekran görüntüsü alınırken", G_TOUCH, SlotType.HOOK_FILE,
             "screenshot"),
 
-        SoundSlot("lock", "Kilitleme", "Ekran kilitlenince", G_LOCK, SlotType.SETTINGS_GLOBAL,
-            "lock_sound", restartSysUi = true),
-        SoundSlot("unlock", "Kilit açma", "Kilit açılınca", G_LOCK, SlotType.SETTINGS_GLOBAL,
-            "unlock_sound", restartSysUi = true),
-        SoundSlot("trusted", "Güvenilir cihaz", "Güvenilir cihaz kilidi açınca", G_LOCK, SlotType.SETTINGS_GLOBAL,
-            "trusted_sound", restartSysUi = true),
+        // Bu üçü SystemUI hook'u ile çalınır (Settings yoluna ve açılıştaki tek seferlik yüklemeye bağımlı değil)
+        SoundSlot("lock", "Kilitleme", "Ekran kilitlenince", G_LOCK, SlotType.HOOK_FILE, "lock"),
+        SoundSlot("unlock", "Kilit açma", "Kilit açılınca", G_LOCK, SlotType.HOOK_FILE, "unlock"),
+        SoundSlot("trusted", "Güvenilir cihaz", "Güvenilir cihaz kilidi açınca", G_LOCK, SlotType.HOOK_FILE, "trusted"),
 
         SoundSlot("lowbat", "Düşük pil", "Pil azalınca", G_POWER, SlotType.SETTINGS_GLOBAL, "low_battery_sound"),
         SoundSlot("charge", "Şarj başladı", "Kablolu şarj takılınca", G_POWER, SlotType.SETTINGS_GLOBAL,

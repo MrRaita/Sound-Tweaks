@@ -50,6 +50,7 @@ import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -119,7 +120,6 @@ data class UiActions(
     val setThemeMode: (Int) -> Unit,
     val setDynamic: (Boolean) -> Unit,
     val setPalette: (Int) -> Unit,
-    val setRestartSysUi: (Boolean) -> Unit,
     val restartSysUiNow: () -> Unit,
     val setSystemToggle: (SysToggle, Boolean) -> Unit,
     val installModule: () -> Unit,
@@ -138,6 +138,7 @@ fun SoundModScreen(
     var tab by remember { mutableIntStateOf(0) }
     val titles = listOf("Sesler", "Kütüphane", "Ayarlar")
     val listStates = listOf(rememberLazyListState(), rememberLazyListState(), rememberLazyListState())
+    val seen = remember { List(3) { mutableSetOf<Any>() } }
 
     LaunchedEffect(tab) { if (tab == 2) a.refreshSys() }
 
@@ -183,9 +184,9 @@ fun SoundModScreen(
                     label = "tabs"
                 ) { t ->
                     when (t) {
-                        0 -> SoundsTab(state, player, a, listStates[0])
-                        1 -> LibraryTab(state, player, a, listStates[1])
-                        else -> SettingsTab(state, a, listStates[2])
+                        0 -> SoundsTab(state, player, a, listStates[0], seen[0])
+                        1 -> LibraryTab(state, player, a, listStates[1], seen[1])
+                        else -> SettingsTab(state, a, listStates[2], seen[2])
                     }
                 }
                 if (state.busy && !state.reduceMotion) {
@@ -212,7 +213,7 @@ private fun Header(title: String, reduceMotion: Boolean) {
     ) {
         Text(
             "SoundMod",
-            style = MaterialTheme.typography.labelLarge,
+            style = MaterialTheme.typography.displaySmall,
             color = MaterialTheme.colorScheme.primary
         )
         AnimatedContent(
@@ -224,7 +225,11 @@ private fun Header(title: String, reduceMotion: Boolean) {
             },
             label = "title"
         ) { t ->
-            Text(t, style = MaterialTheme.typography.displaySmall)
+            Text(
+                t,
+                style = MaterialTheme.typography.titleMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }
@@ -244,7 +249,13 @@ private fun GroupHeader(text: String) {
 // ------------------------------------------------------------------------------------------
 
 @Composable
-private fun SoundsTab(state: UiState, player: State<PlayerUi>, a: UiActions, listState: LazyListState) {
+private fun SoundsTab(
+    state: UiState,
+    player: State<PlayerUi>,
+    a: UiActions,
+    listState: LazyListState,
+    seen: MutableSet<Any>
+) {
     var sheetSlot by remember { mutableStateOf<SoundSlot?>(null) }
     var pickerSlot by remember { mutableStateOf<SoundSlot?>(null) }
 
@@ -282,7 +293,7 @@ private fun SoundsTab(state: UiState, player: State<PlayerUi>, a: UiActions, lis
                     player = player,
                     onClick = { sheetSlot = ss.slot },
                     onPlay = { a.playSlot(ss.slot) },
-                    modifier = Modifier.animateItem().staggerIn(base + i)
+                    modifier = Modifier.animateItem().staggerIn(base + i, seen, ss.slot.id)
                 )
             }
         }
@@ -294,14 +305,6 @@ private fun SoundsTab(state: UiState, player: State<PlayerUi>, a: UiActions, lis
             Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
                 Text(slot.title, style = MaterialTheme.typography.headlineSmall)
                 Text(slot.desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                if (slot.restartSysUi) {
-                    Spacer(Modifier.height(8.dp))
-                    Text(
-                        "Bu ses Sistem Arayüzü açılırken bir kez yüklenir; değişince otomatik yenilenir.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
                 Spacer(Modifier.height(18.dp))
                 Button(
                     onClick = { pickerSlot = slot; sheetSlot = null },
@@ -406,9 +409,11 @@ private fun SlotRow(
             }
             PlayPauseButton(playing = playing, onClick = onPlay)
         }
-        AnimatedVisibility(visible = active) {
+        AnimatedVisibility(visible = playing) {
+            // Tam uzunlukta sürekli akan dalga (kısa seslerde düz çizgi kalmasın)
             LinearWavyProgressIndicator(
-                progress = { player.value.progress },
+                progress = { 1f },
+                amplitude = { 1f },
                 modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 14.dp)
             )
         }
@@ -420,7 +425,13 @@ private fun SlotRow(
 // ------------------------------------------------------------------------------------------
 
 @Composable
-private fun LibraryTab(state: UiState, player: State<PlayerUi>, a: UiActions, listState: LazyListState) {
+private fun LibraryTab(
+    state: UiState,
+    player: State<PlayerUi>,
+    a: UiActions,
+    listState: LazyListState,
+    seen: MutableSet<Any>
+) {
     Column(Modifier.fillMaxSize()) {
         Row(
             Modifier.padding(start = 28.dp, end = 16.dp),
@@ -440,7 +451,8 @@ private fun LibraryTab(state: UiState, player: State<PlayerUi>, a: UiActions, li
             player = player,
             onPlay = a.playLibrary,
             onPick = null,
-            listState = listState
+            listState = listState,
+            seen = seen
         )
     }
 }
@@ -452,7 +464,8 @@ private fun SoundList(
     player: State<PlayerUi>,
     onPlay: (String) -> Unit,
     onPick: ((SystemSound) -> Unit)?,
-    listState: LazyListState = rememberLazyListState()
+    listState: LazyListState = rememberLazyListState(),
+    seen: MutableSet<Any> = remember { mutableSetOf() }
 ) {
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf<String?>(null) }
@@ -517,7 +530,7 @@ private fun SoundList(
                             player = player,
                             onPlay = { onPlay(s.path) },
                             onPick = onPick?.let { pick -> { pick(s) } },
-                            modifier = Modifier.animateItem().staggerIn(i)
+                            modifier = Modifier.animateItem().staggerIn(i, seen, s.path)
                         )
                     }
                 }
@@ -562,9 +575,10 @@ private fun SoundRow(
                     FilledTonalIconButton(onClick = onPick) { Icon(Icons.Default.Check, "Seç") }
                 }
             }
-            AnimatedVisibility(visible = active) {
+            AnimatedVisibility(visible = playing) {
                 LinearWavyProgressIndicator(
-                    progress = { player.value.progress },
+                    progress = { 1f },
+                    amplitude = { 1f },
                     modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
                 )
             }
@@ -583,7 +597,8 @@ private fun SoundRow(
 // ------------------------------------------------------------------------------------------
 
 @Composable
-private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) {
+private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, seen: MutableSet<Any>) {
+    var confirmRestart by remember { mutableStateOf(false) }
     val container = MaterialTheme.colorScheme.surfaceContainerHigh
 
     LazyColumn(
@@ -594,7 +609,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
         // ---- Durum ----
         item { GroupHeader("Durum") }
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(0)) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(0, seen, "settings_0")) {
                 StatusCard(
                     shape = segmentShape(0, 3), container = container,
                     title = "Root", ok = state.root == RootState.GRANTED,
@@ -629,44 +644,51 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
         }
 
         // ---- Sistem ses durumu ----
-        item { GroupHeader("Sistem ses durumu") }
+        item { GroupHeader("Sistem ses anahtarları") }
         item {
             val s = state.sys
-            val muted = s.ringer != "Normal" || s.systemMuted
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(1)) {
+            val ringerOk = s.ringer == "Normal" && !s.systemMuted
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(1, seen, "settings_1")) {
                 SettingsCard(segmentShape(0, 2), container) {
-                    Text("Sesleri bastıran ayarlar", style = MaterialTheme.typography.titleMedium)
-                    SwitchRow("Dokunma sesleri", "Klavye ve dokunma sesleri için gerekli", s.touchSounds, true) {
+                    Text("Android'in kendi ses ayarları", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Bunlardan biri kapalıysa ilgili sesler, senin seçtiklerin dahil, hiç çalmaz. " +
+                            "Anahtarlar doğrudan sistem ayarını değiştirir; Ayarlar → Ses bölümündekilerle aynıdır.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SwitchRow("Dokunma sesleri", "Klavye tuşları ve ekran dokunma sesleri", s.touchSounds, true) {
                         a.setSystemToggle(SysToggle.TOUCH, it)
                     }
-                    SwitchRow("Kilit ekranı sesleri", "Kilitleme ve kilit açma sesleri", s.lockSounds, true) {
+                    SwitchRow("Kilit ekranı sesleri", "Kilitleme, kilit açma ve güvenilir cihaz sesleri", s.lockSounds, true) {
                         a.setSystemToggle(SysToggle.LOCK, it)
                     }
-                    SwitchRow("Şarj sesleri", "Şarj başlayınca çalan ses", s.chargingSounds, true) {
+                    SwitchRow("Şarj sesleri", "Şarj kablosu takılınca çalan ses", s.chargingSounds, true) {
                         a.setSystemToggle(SysToggle.CHARGING, it)
                     }
                 }
                 SettingsCard(segmentShape(1, 2), container) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            if (muted) Icons.Default.Warning else Icons.Default.Check, null,
-                            tint = if (muted) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                            if (ringerOk) Icons.Default.Check else Icons.Default.Warning, null,
+                            tint = if (ringerOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                         )
                         Spacer(Modifier.width(10.dp))
-                        Text(
-                            "Zil modu: ${s.ringer} · Sistem sesi: ${s.systemVol}/${s.systemMax}" +
-                                if (s.systemMuted) " (kapalı)" else "",
-                            style = MaterialTheme.typography.bodyMedium
-                        )
+                        Column {
+                            Text("Şu an telefon: ${s.ringer} modda", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Sistem ses seviyesi ${s.systemVol}/${s.systemMax}" + if (s.systemMuted) " (kapalı)" else "",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
                     }
-                    if (muted) {
-                        Text(
-                            "Telefon titreşim/sessizde ya da sistem sesi kapalıyken kilit ve dokunma sesleri çalmaz. " +
-                                "Ses seviyesini ya da zil modunu aç.",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        if (ringerOk) "Sesler çalabilir durumda."
+                        else "Telefon sessiz ya da titreşimdeyken, ya da sistem sesi kapalıyken kilit ve dokunma sesleri çalmaz. " +
+                            "Zil modunu ya da ses seviyesini aç.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
@@ -674,7 +696,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
         // ---- Ses işleme ----
         item { GroupHeader("Ses işleme") }
         item {
-            Column(modifier = Modifier.staggerIn(2)) {
+            Column(modifier = Modifier.staggerIn(2, seen, "settings_2")) {
                 SettingsCard(segmentShape(0, 1), container) {
                     SwitchRow(
                         "Seviyeyi normalize et",
@@ -716,7 +738,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
         item { GroupHeader("Görünüm") }
         item {
             val dynamicOk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(3)) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(3, seen, "settings_3")) {
                 SettingsCard(segmentShape(0, 3), container) {
                     Text("Tema", style = MaterialTheme.typography.titleMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -769,23 +791,25 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
         // ---- Gelişmiş ----
         item { GroupHeader("Gelişmiş") }
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(4)) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(4, seen, "settings_4")) {
                 SettingsCard(segmentShape(0, 2), container) {
-                    SwitchRow(
-                        "Kilit sesi değişince Sistem Arayüzünü yenile",
-                        "Kilit, kilit açma ve güvenilir cihaz sesleri açılışta bir kez yüklenir",
-                        state.restartSysUi, true, a.setRestartSysUi
+                    Text("Sistem Arayüzü", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Modülü yeni etkinleştirdiysen ya da bir şey takılırsa Sistem Arayüzünü yenileyebilirsin. " +
+                            "Ekran birkaç saniye yeniden çizilir; açık uygulamalar kapanmaz. Hiçbir ses ayarı bunu kendiliğinden yapmaz.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     OutlinedButton(
-                        onClick = a.restartSysUiNow,
+                        onClick = { confirmRestart = true },
                         enabled = state.root == RootState.GRANTED,
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Sistem Arayüzünü şimdi yenile") }
+                    ) { Text("Sistem Arayüzünü yenile") }
                 }
                 SettingsCard(segmentShape(1, 2), container) {
                     Text("Tanılama", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Dosya izinleri, ayarlar, hook durumu ve SELinux reddlerini tek raporda toplar.",
+                        "Dosya izinleri, ayarlar, hook durumu, son SystemUI olayı ve SELinux reddlerini tek raporda toplar.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -800,12 +824,31 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
 
         item {
             Text(
-                "SoundMod 0.2.0",
+                "SoundMod 0.3.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
             )
         }
+    }
+
+    if (confirmRestart) {
+        AlertDialog(
+            onDismissRequest = { confirmRestart = false },
+            title = { Text("Sistem Arayüzü yenilensin mi?") },
+            text = {
+                Text(
+                    "Durum çubuğu, bildirim paneli ve kilit ekranı birkaç saniye yeniden başlatılır; ekran kısa süre " +
+                        "titreyebilir. Açık uygulamalar ve verilerin etkilenmez."
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = { confirmRestart = false; a.restartSysUiNow() }) { Text("Yenile") }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmRestart = false }) { Text("Vazgeç") }
+            }
+        )
     }
 }
 
