@@ -16,6 +16,11 @@ object SoundPaths {
     const val SYSUI_LAST_KEY = "soundmod_sysui_last"
     /** Bu dosya varsa SystemUI hook'u son olayını Settings.Global'a yazar (yalnızca tanılama için) */
     const val DEBUG_FLAG = "$BASE/.debug"
+    /**
+     * Bu dosya varsa kilit ekranı sesleri (kilitleme, kilit açma, güvenilir cihaz) sistemin kısıtlamalarını
+     * aşıp medya ses seviyesiyle SoundMod tarafından çalınır. Yoksa stok mekanizma kullanılır.
+     */
+    const val FORCE_FLAG = "$BASE/.force_lock"
     /** Herkesin (SystemUI dahil) okuyabildiği SELinux tipi */
     const val CONTEXT = "u:object_r:system_file:s0"
 

@@ -82,7 +82,10 @@ class MainActivity : ComponentActivity() {
                     clearReport = vm::clearReport,
                     dismissIntro = vm::dismissIntro,
                     showIntro = vm::showIntroAgain,
-                    setDebugLog = vm::setDebugLog
+                    setDebugLog = vm::setDebugLog,
+                    setForceLock = vm::setForceLock,
+                    confirmRestartPrompt = vm::confirmRestartPrompt,
+                    dismissRestartPrompt = vm::dismissRestartPrompt
                 )
             }
 

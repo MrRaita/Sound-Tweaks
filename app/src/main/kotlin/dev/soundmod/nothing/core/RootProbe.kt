@@ -17,7 +17,8 @@ data class Probe(
     val info: RootInfo,
     val hookStatus: String?,
     val moduleInstalled: Boolean,
-    val debugLog: Boolean
+    val debugLog: Boolean,
+    val forceLock: Boolean
 )
 
 /**
@@ -33,6 +34,7 @@ object RootProbe {
             echo "uid=${'$'}(id -u)"
             if [ "${'$'}(id -u)" = "0" ]; then
               rm -f ${Root.q(SoundPaths.BASE + "/.status_system")}
+              rm -f ${Root.q(SoundPaths.OVERRIDE_DIR)}/lock.* ${Root.q(SoundPaths.OVERRIDE_DIR)}/unlock.* ${Root.q(SoundPaths.OVERRIDE_DIR)}/trusted.*
               mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && chown -R system:system $b && chmod -R 755 $b && (chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b)
             fi
             echo "ctx=${'$'}(id -Z 2>/dev/null)"
@@ -46,6 +48,7 @@ object RootProbe {
             echo "lkm=${'$'}(grep -c -i kernelsu /proc/modules 2>/dev/null)"
             echo "module=${'$'}([ -d /data/adb/modules/$MODULE_ID ] && echo yes)"
             echo "debug=${'$'}([ -e ${Root.q(SoundPaths.DEBUG_FLAG)} ] && echo yes)"
+            echo "force=${'$'}([ -e ${Root.q(SoundPaths.FORCE_FLAG)} ] && echo yes)"
             echo "sys=${'$'}(cat ${SoundPaths.STATUS_SYSTEM} 2>/dev/null)"
             echo "sysui=${'$'}(settings get global ${SoundPaths.SYSUI_STATUS_KEY} 2>/dev/null)"
         """.trimIndent()
@@ -57,7 +60,7 @@ object RootProbe {
             if (i > 0) kv[line.substring(0, i)] = line.substring(i + 1).trim()
         }
         val granted = kv["uid"] == "0"
-        if (!granted) return Probe(false, RootInfo(), null, false, false)
+        if (!granted) return Probe(false, RootInfo(), null, false, false, false)
 
         val ksud = kv["ksud"].orEmpty()
         val magisk = kv["magisk"].orEmpty()
@@ -89,6 +92,6 @@ object RootProbe {
             kv["sys"]?.takeIf { it.isNotBlank() },
             kv["sysui"]?.takeIf { it.isNotBlank() && it != "null" }
         ).takeIf { it.isNotEmpty() }?.joinToString("\n")
-        return Probe(true, info, hook, kv["module"] == "yes", kv["debug"] == "yes")
+        return Probe(true, info, hook, kv["module"] == "yes", kv["debug"] == "yes", kv["force"] == "yes")
     }
 }

@@ -62,6 +62,21 @@ class SoundRepository(private val ctx: Context) {
         return r
     }
 
+    /** Kilit sesleri "zorla çal" modu (bayrak dosyası). Varsayılan kapalı = stok mekanizma. */
+    fun setForceLock(on: Boolean): Root.Result {
+        val f = Root.q(SoundPaths.FORCE_FLAG)
+        return Root.run(
+            if (on) "touch $f && (chcon ${SoundPaths.CONTEXT} $f || true)" else "rm -f $f"
+        )
+    }
+
+    /** Eski sürümlerden kalan, artık geçersiz yuva kayıtlarını (root gerektirmeden) unutur. */
+    fun forget(slot: SoundSlot) {
+        prefs.edit().remove("label_${slot.id}").remove("prev_${slot.id}").remove("srcpath_${slot.id}").apply()
+        File(srcDir, slot.id).delete()
+        File(previewDir, "${slot.id}.wav").delete()
+    }
+
     /** Ayrıntılı olay kaydı: bayrak dosyası varken SystemUI hook'u son olayını yazar (varsayılan kapalı). */
     fun setDebug(on: Boolean): Root.Result {
         val f = Root.q(SoundPaths.DEBUG_FLAG)
@@ -142,7 +157,7 @@ class SoundRepository(private val ctx: Context) {
                 val isSystem = src.absolutePath.startsWith("/system") || src.absolutePath.startsWith("/product") ||
                     src.absolutePath.startsWith("/vendor") || src.absolutePath.startsWith("/odm") ||
                     src.absolutePath.startsWith("/my_")
-                val r = deploy(slot, src, ext, direct = isSystem && slot.type == SlotType.SETTINGS_GLOBAL)
+                val r = deploy(slot, src, ext, direct = isSystem && slot.type == SlotType.SETTINGS_GLOBAL && !slot.sysUiReload)
                 if (r.isFailure) return Result.failure(r.exceptionOrNull()!!)
                 remember(slot, label, src.absolutePath, src.absolutePath)
                 Result.success(ApplyInfo(null, false))

@@ -20,7 +20,9 @@ data class SoundSlot(
     /** Değişiklikten sonra ses efektlerini yeniden yükle */
     val reload: Boolean = false,
     /** Denemek için çalınabilir AudioManager.FX_* sabiti */
-    val fx: Int? = null
+    val fx: Int? = null,
+    /** Stok mekanizma sesi Sistem Arayüzü açılırken bir kez yükler: değişince yenileme önerilir */
+    val sysUiReload: Boolean = false
 )
 
 object SoundCatalog {
@@ -49,10 +51,13 @@ object SoundCatalog {
         SoundSlot("screenshot", "Ekran görüntüsü", "Ekran görüntüsü alınırken", G_TOUCH, SlotType.HOOK_FILE,
             "screenshot"),
 
-        // Bu üçü SystemUI hook'u ile çalınır (Settings yoluna ve açılıştaki tek seferlik yüklemeye bağımlı değil)
-        SoundSlot("lock", "Kilitleme", "Ekran kilitlenince", G_LOCK, SlotType.HOOK_FILE, "lock"),
-        SoundSlot("unlock", "Kilit açma", "Kilit açılınca", G_LOCK, SlotType.HOOK_FILE, "unlock"),
-        SoundSlot("trusted", "Güvenilir cihaz", "Güvenilir cihaz kilidi açınca", G_LOCK, SlotType.HOOK_FILE, "trusted"),
+        // Stok mekanizma: Settings.Global yolu. İsteğe bağlı "zorla çal" modunda aynı dosyayı SoundMod çalar.
+        SoundSlot("lock", "Kilitleme", "Ekran kilitlenince", G_LOCK, SlotType.SETTINGS_GLOBAL,
+            "lock_sound", sysUiReload = true),
+        SoundSlot("unlock", "Kilit açma", "Kilit açılınca", G_LOCK, SlotType.SETTINGS_GLOBAL,
+            "unlock_sound", sysUiReload = true),
+        SoundSlot("trusted", "Güvenilir cihaz", "Güvenilir cihaz kilidi açınca", G_LOCK, SlotType.SETTINGS_GLOBAL,
+            "trusted_sound", sysUiReload = true),
 
         SoundSlot("lowbat", "Düşük pil", "Pil azalınca", G_POWER, SlotType.SETTINGS_GLOBAL, "low_battery_sound"),
         SoundSlot("charge", "Şarj başladı", "Kablolu şarj takılınca", G_POWER, SlotType.SETTINGS_GLOBAL,
@@ -61,6 +66,10 @@ object SoundCatalog {
             "wireless_charging_started_sound"),
 
         SoundSlot("dock", "Masa dock'u", "Masa dock'una takılınca", G_DOCK, SlotType.SETTINGS_GLOBAL, "desk_dock_sound"),
-        SoundSlot("cardock", "Araç dock'u", "Araç dock'una takılınca", G_DOCK, SlotType.SETTINGS_GLOBAL, "car_dock_sound")
+        SoundSlot("cardock", "Araç dock'u", "Araç dock'una takılınca", G_DOCK, SlotType.SETTINGS_GLOBAL, "car_dock_sound"),
+        SoundSlot("undock", "Masa dock'undan çıkarma", "Masa dock'undan çıkarılınca", G_DOCK, SlotType.SETTINGS_GLOBAL,
+            "desk_undock_sound"),
+        SoundSlot("carundock", "Araç dock'undan çıkarma", "Araç dock'undan çıkarılınca", G_DOCK, SlotType.SETTINGS_GLOBAL,
+            "car_undock_sound")
     )
 }

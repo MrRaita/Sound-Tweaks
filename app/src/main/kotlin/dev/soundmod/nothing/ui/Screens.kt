@@ -7,6 +7,7 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -18,6 +19,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -45,6 +47,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -84,6 +87,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -93,6 +97,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
@@ -130,7 +135,10 @@ data class UiActions(
     val clearReport: () -> Unit,
     val dismissIntro: () -> Unit,
     val showIntro: () -> Unit,
-    val setDebugLog: (Boolean) -> Unit
+    val setDebugLog: (Boolean) -> Unit,
+    val setForceLock: (Boolean) -> Unit,
+    val confirmRestartPrompt: () -> Unit,
+    val dismissRestartPrompt: () -> Unit
 )
 
 @Composable
@@ -203,6 +211,7 @@ fun SoundModScreen(
         }
     }
 
+    state.restartPrompt?.let { RestartPromptDialog(it, a.confirmRestartPrompt, a.dismissRestartPrompt) }
     if (state.showIntro) IntroDialog(a.dismissIntro)
     state.report?.let { text -> ReportSheet(text, a.clearReport) }
 }
@@ -312,6 +321,15 @@ private fun SoundsTab(
             Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
                 Text(slot.title, style = MaterialTheme.typography.headlineSmall)
                 Text(slot.desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (slot.sysUiReload) {
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        "Android bu sesi Sistem Arayüzü açılırken bir kez yükler; değişince yenileme önerilir. " +
+                            "Sessiz modda da duyulmasını istersen Ayarlar → Gelişmiş → “Kilit seslerini zorla çal”.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
                 Spacer(Modifier.height(18.dp))
                 Button(
                     onClick = { pickerSlot = slot; sheetSlot = null },
@@ -605,20 +623,28 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
         // ---- Durum ----
         item { GroupHeader("Durum") }
         item {
+            val info = state.rootInfo
             Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(0, listState)) {
                 StatusCard(
                     shape = segmentShape(0, 3), container = container,
                     title = "Root", ok = state.root == RootState.GRANTED,
+                    summary = when (state.root) {
+                        RootState.GRANTED -> "Aktif · ${info.manager}" +
+                            if (info.selinux.isNotBlank()) " · SELinux ${info.selinux}" else ""
+                        RootState.DENIED -> "İzin yok"
+                        RootState.UNKNOWN -> "Kontrol ediliyor…"
+                    },
                     text = when (state.root) {
                         RootState.GRANTED -> "Root izni verildi"
                         RootState.DENIED -> "Root izni yok. Kök yöneticisinde SoundMod'a izin ver."
                         RootState.UNKNOWN -> "Kontrol ediliyor…"
                     },
-                    details = rootDetails(state.rootInfo)
+                    details = rootDetails(info)
                 ) { OutlinedButton(onClick = a.refresh) { Text("Yeniden kontrol et") } }
                 StatusCard(
                     shape = segmentShape(1, 3), container = container,
                     title = "Vector modülü", ok = state.hookStatus != null,
+                    summary = hookSummary(state.hookStatus),
                     text = state.hookStatus
                         ?: "Hook henüz çalışmamış. Vector'da SoundMod'u etkinleştir, kapsamda " +
                         "“Sistem Çerçevesi” ve “Sistem Arayüzü”nü seç, sonra yeniden başlat."
@@ -626,6 +652,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
                 StatusCard(
                     shape = segmentShape(2, 3), container = container,
                     title = "SELinux yardımcı modülü (isteğe bağlı)", ok = state.moduleInstalled,
+                    summary = if (state.moduleInstalled) "Kurulu" else "Kurulu değil",
                     text = if (state.moduleInstalled)
                         "Kurulu. Açılışta ses deposunun SELinux bağlamını onarır."
                     else "Açılışta ses deposunun bağlamını onarır. Kilit/ekran görüntüsü sesleri özel dosyada çalmazsa kur."
@@ -789,7 +816,22 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
         item { GroupHeader("Gelişmiş") }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(4, listState)) {
-                SettingsCard(segmentShape(0, 2), container) {
+                SettingsCard(segmentShape(0, 3), container) {
+                    SwitchRow(
+                        "Kilit seslerini zorla çal",
+                        "Kilitleme, kilit açma ve güvenilir cihaz seslerini SoundMod medya ses seviyesiyle çalar; " +
+                            "telefon sessiz ya da titreşimdeyken de duyulur.",
+                        state.forceLock, state.root == RootState.GRANTED, a.setForceLock
+                    )
+                    Text(
+                        "Kapalıyken (varsayılan) Android'in kendi mekanizması kullanılır ve hiçbir şeye dokunulmaz. " +
+                            "Açıkken Sistem Arayüzüne bir kanca eklenir; ses SoundPool ile (stok kilit sesinin de " +
+                            "kullandığı motor) çalınır. “Kilit ekranı sesleri” anahtarı kapalıysa yine çalmaz.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                SettingsCard(segmentShape(1, 3), container) {
                     Text("Sistem Arayüzü", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "Modülü yeni etkinleştirdiysen ya da bir şey takılırsa Sistem Arayüzünü yenileyebilirsin. " +
@@ -803,7 +845,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Sistem Arayüzünü yenile") }
                 }
-                SettingsCard(segmentShape(1, 2), container) {
+                SettingsCard(segmentShape(2, 3), container) {
                     Text("Tanılama", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "Dosya izinleri, ayarlar, hook durumu, son SystemUI olayı ve SELinux reddlerini tek raporda toplar.",
@@ -829,7 +871,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
 
         item {
             Text(
-                "SoundMod 0.4.0",
+                "SoundMod 0.5.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
@@ -857,47 +899,93 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
     }
 }
 
+/**
+ * Daralıp açılır durum kartı. Daraltılmışken kısa bir özet gösterir; dokununca ayrıntılar ve eylemler açılır.
+ * Sorun varsa (ok = false) kendiliğinden açık gelir; kullanıcı dokunursa seçimi hatırlanır.
+ */
 @Composable
 private fun StatusCard(
     shape: Shape,
     container: Color,
     title: String,
     ok: Boolean,
+    summary: String,
     text: String,
     details: List<Pair<String, String>> = emptyList(),
     actions: @Composable () -> Unit
 ) {
+    // 0 = otomatik (sorun varsa açık), 1 = kullanıcı açtı, 2 = kullanıcı kapattı
+    var choice by rememberSaveable(title) { mutableStateOf(0) }
+    val expanded = when (choice) {
+        1 -> true
+        2 -> false
+        else -> !ok
+    }
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f),
+        label = "chevron"
+    )
     Card(
         shape = shape,
         colors = CardDefaults.cardColors(containerColor = container),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        Column(Modifier.animateContentSize()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { choice = if (expanded) 2 else 1 }
+                    .padding(horizontal = 20.dp, vertical = 16.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
                 Icon(
                     if (ok) Icons.Default.Check else Icons.Default.Warning, null,
                     tint = if (ok) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
                 )
                 Spacer(Modifier.width(10.dp))
-                Text(title, style = MaterialTheme.typography.titleMedium)
-            }
-            Text(text, style = MaterialTheme.typography.bodyMedium)
-            if (details.isNotEmpty()) {
-                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
-                    details.forEach { (k, v) ->
-                        Row {
-                            Text(
-                                k,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.width(92.dp)
-                            )
-                            Text(v, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                        }
+                Column(Modifier.weight(1f)) {
+                    Text(title, style = MaterialTheme.typography.titleMedium)
+                    if (!expanded) {
+                        Text(
+                            summary,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
                 }
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (expanded) "Daralt" else "Genişlet",
+                    modifier = Modifier.graphicsLayer { rotationZ = rotation }
+                )
             }
-            actions()
+            AnimatedVisibility(visible = expanded) {
+                Column(
+                    Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(text, style = MaterialTheme.typography.bodyMedium)
+                    if (details.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            details.forEach { (k, v) ->
+                                Row {
+                                    Text(
+                                        k,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.width(92.dp)
+                                    )
+                                    Text(v, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    }
+                    actions()
+                }
+            }
         }
     }
 }
@@ -1075,4 +1163,22 @@ private fun IntroItem(title: String, body: String) {
         Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
         Text(body, style = MaterialTheme.typography.bodyMedium)
     }
+}
+
+
+private fun hookSummary(status: String?): String = when {
+    status == null -> "Çalışmıyor"
+    status.contains("HATA") -> "Bazı kancalar çalışmıyor"
+    else -> "Kancalar aktif"
+}
+
+@Composable
+private fun RestartPromptDialog(p: RestartPrompt, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(p.title) },
+        text = { Text(p.text) },
+        confirmButton = { TextButton(onClick = onConfirm) { Text("Yenile") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Sonra") } }
+    )
 }

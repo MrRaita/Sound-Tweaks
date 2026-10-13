@@ -11,8 +11,8 @@ Hedef: Nothing Phone (4a) · Nothing OS 4.1 · Android 16 (diğer AOSP tabanlı 
 |---|---|
 | Klavye tuşları, dokunma tıkı | `system_server` içinde `SoundEffectsHelper.getResourceFilePath` hook'u → `/data/system/soundmod/override/<StokAdı>.*` varsa onu döndürür |
 | Ekran görüntüsü | SystemUI içinde `ScreenshotSoundProviderImpl.getScreenshotSound` hook'u |
-| Kilitleme, kilit açma, güvenilir cihaz | SystemUI içinde `KeyguardViewMediator.playSounds` / `playTrustedSound` hook'u: özel dosya varsa orijinal çağrı atlanır ve ses SoundMod tarafından çalınır (stok dosya olmasa da çalışır) |
-| Düşük pil, şarj, kablosuz şarj, dock | Root ile `settings put global <anahtar> <dosya yolu>` (sistem bu yolu çalarken okur) |
+| Kilitleme, kilit açma, güvenilir cihaz | Varsayılan: Android'in kendi mekanizması (`Settings.Global` `lock_sound` vb. yolu; sistem Sistem Arayüzü açılırken bir kez yükler). İsteğe bağlı "zorla çal" modunda SystemUI'da `KeyguardViewMediator.playSounds` / `playTrustedSound` yakalanır ve dosya SoundPool ile medya ses seviyesinden çalınır |
+| Düşük pil, şarj, kablosuz şarj, dock, dock'tan çıkarma | Root ile `settings put global <anahtar> <dosya yolu>` (sistem bu yolu çalarken okur) |
 
 * Uygulama `/product/media/audio` (ve diğer bilinen dizinleri) tarar, sesleri listeler, önizletir.
 * Sesi **sistem seslerinden** ya da **kendi dosyandan** seçebilirsin. Kendi dosyaların WAV'a çevrilir,
@@ -55,9 +55,11 @@ system_server dosyaları okuyabilir. Uygulama bunu kendisi yapar. Bağlam açıl
 
 * Ayarlar → **Sistem ses anahtarları**: dokunma sesleri, kilit ekranı sesleri ve şarj sesleri açık olmalı; zil modu
   *Normal* ve sistem sesi kapalı olmamalı (titreşim/sessizde kilit ve dokunma sesleri çalmaz).
-* Kilit sesleri sistem ayarında kapalıysa (Kilit ekranı sesleri) SoundMod da stok davranışı korur ve çalmaz.
-* Sistem Arayüzü kendiliğinden yenilenmez; modülü yeni etkinleştirdiysen Ayarlar → Gelişmiş'ten onay vererek
-  yenileyebilirsin.
+* Kilit sesleri varsayılanda stok mekanizmayla çalar: telefon sessiz/titreşimdeyken ya da "Kilit ekranı sesleri"
+  kapalıyken duyulmaz. Ayarlar → Gelişmiş → **Kilit seslerini zorla çal** açılırsa SoundMod sesi medya ses
+  seviyesiyle kendisi çalar (sessiz modda da duyulur); "Kilit ekranı sesleri" kapalıysa yine çalmaz.
+* Sistem Arayüzü kendiliğinden yenilenmez; kilit sesi değişince ya da zorla çalma açılınca yenileme sana sorulur,
+  ayrıca Ayarlar → Gelişmiş'ten onay vererek yenileyebilirsin.
 * Ayarlar → Gelişmiş → **Tanı raporu**: dosya izinleri, ayar değerleri, hook durumu ve SELinux reddlerini gösterir.
 
 ## Derleme

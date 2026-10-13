@@ -77,12 +77,25 @@ data class UiState(
     val report: String? = null,
     val rootInfo: RootInfo = RootInfo(),
     val debugLog: Boolean = false,
-    val showIntro: Boolean = false
+    val showIntro: Boolean = false,
+    val forceLock: Boolean = false,
+    val restartPrompt: RestartPrompt? = null
 )
+
+/** Kullanıcıya sorulan Sistem Arayüzü yenileme önerisi */
+data class RestartPrompt(val title: String, val text: String)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = SoundRepository(app)
     private val prefs = app.getSharedPreferences("soundmod_ui", Context.MODE_PRIVATE)
+
+    init {
+        // Sürüm 0.5: kilit yuvaları yeniden stok mekanizmaya (Settings yolu) döndü; eski kayıtları unut
+        if (prefs.getInt("schema", 0) < 2) {
+            SoundCatalog.slots.filter { it.sysUiReload }.forEach { repo.forget(it) }
+            prefs.edit().putInt("schema", 2).apply()
+        }
+    }
 
     private val _state = MutableStateFlow(
         UiState(
@@ -181,6 +194,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     moduleInstalled = p.moduleInstalled,
                     rootInfo = p.info,
                     debugLog = p.debugLog,
+                    forceLock = p.forceLock,
                     slots = readSlots(),
                     sys = readSys()
                 )
@@ -312,6 +326,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         var ok = 0
         var fail = 0
         var needReload = false
+        var needSysUi = false
         var last: ApplyInfo? = null
         for (ss in readSlots()) {
             if (!repo.hasSource(ss.slot)) continue
@@ -320,11 +335,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     ok++
                     last = it
                     if (ss.slot.reload) needReload = true
+                    if (ss.slot.sysUiReload) needSysUi = true
                 },
                 onFailure = { fail++ }
             )
         }
         if (needReload) reloadEffects()
+        if (needSysUi && !_state.value.forceLock) askSysUiReload()
         _state.update { it.copy(slots = readSlots()) }
         msg(
             when {
@@ -338,6 +355,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun afterChange(slot: SoundSlot, text: String, info: ApplyInfo?) {
         if (slot.reload) reloadEffects()
         _state.update { it.copy(slots = readSlots()) }
+        if (slot.sysUiReload && !_state.value.forceLock) askSysUiReload()
         val level = info?.summary()?.takeIf { it.isNotBlank() }?.let { "\n$it" } ?: ""
         msg(text + level)
     }
@@ -514,6 +532,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             echo "lock/unlock/trusted stok dosyalar:"; ls -lZ /product/media/audio/ui/ 2>&1 | grep -i -E "lock|trusted"
             echo "== hook durumu =="; cat ${SoundPaths.STATUS_SYSTEM} 2>&1; echo
             settings get global ${SoundPaths.SYSUI_STATUS_KEY}
+            echo "kilit sesi zorla cal: ${'$'}([ -e ${SoundPaths.FORCE_FLAG} ] && echo ACIK || echo kapali)"
             echo "ayrintili olay kaydi: ${'$'}([ -e ${SoundPaths.DEBUG_FLAG} ] && echo ACIK || echo kapali)"
             echo "son SystemUI olayi:"; settings get global ${SoundPaths.SYSUI_LAST_KEY}
             echo "== sistem arayuzu =="; pidof com.android.systemui
@@ -523,6 +542,52 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         """.trimIndent()
         val r = Root.run(cmd)
         _state.update { it.copy(report = r.out.ifBlank { "Rapor boş (kod ${r.code})" }) }
+    }
+
+    private fun askSysUiReload() {
+        _state.update {
+            it.copy(
+                restartPrompt = RestartPrompt(
+                    "Sistem Arayüzü yenilensin mi?",
+                    "Kilitleme, kilit açma ve güvenilir cihaz sesleri Sistem Arayüzü açılırken bir kez yüklenir. " +
+                        "Yeni sesin hemen geçerli olması için Sistem Arayüzü yeniden başlatılabilir. Ekran birkaç saniye " +
+                        "yeniden çizilir, açık uygulamalar kapanmaz. İstersen sonra da yenileyebilirsin " +
+                        "(Ayarlar → Gelişmiş)."
+                )
+            )
+        }
+    }
+
+    /** Kilit sesleri "zorla çal" modu: medya ses seviyesiyle çal, sessiz/titreşim kısıtlamalarını aş. */
+    fun setForceLock(on: Boolean) = work {
+        val r = repo.setForceLock(on)
+        if (!r.ok) {
+            msg("Ayar değiştirilemedi: ${r.out}")
+        } else {
+            _state.update { it.copy(forceLock = on) }
+            if (on) {
+                _state.update {
+                    it.copy(
+                        restartPrompt = RestartPrompt(
+                            "Zorla çalma için yenile",
+                            "Zorla çalma, Sistem Arayüzü açılırken kurulur. Etkinleşmesi için Sistem Arayüzü şimdi " +
+                                "yeniden başlatılsın mı? Ekran birkaç saniye yeniden çizilir, açık uygulamalar kapanmaz."
+                        )
+                    )
+                }
+            } else {
+                msg("Zorla çalma kapatıldı, stok kilit sesi mekanizması kullanılacak")
+            }
+        }
+    }
+
+    fun confirmRestartPrompt() {
+        _state.update { it.copy(restartPrompt = null) }
+        restartSysUiNow()
+    }
+
+    fun dismissRestartPrompt() {
+        _state.update { it.copy(restartPrompt = null) }
     }
 
     fun dismissIntro() {

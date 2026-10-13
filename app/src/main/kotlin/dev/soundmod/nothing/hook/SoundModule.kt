@@ -3,6 +3,7 @@ package dev.soundmod.nothing.hook
 import android.app.Application
 import android.media.AudioAttributes
 import android.media.MediaPlayer
+import android.media.SoundPool
 import android.provider.Settings
 import android.util.Log
 import dev.soundmod.nothing.core.SoundPaths
@@ -50,7 +51,7 @@ class SoundModule : XposedModule() {
             log(Log.ERROR, TAG, "Screenshot hook failed", t)
         }
         try {
-            parts += "Keyguard OK (${hookKeyguard(param.classLoader)})"
+            parts += "Keyguard ${hookKeyguard(param.classLoader)}"
         } catch (t: Throwable) {
             parts += "Keyguard HATA: ${t.javaClass.simpleName}: ${t.message}"
             log(Log.ERROR, TAG, "Keyguard hook failed", t)
@@ -116,15 +117,20 @@ class SoundModule : XposedModule() {
     }
 
     // ---------------------------------------------------------------------------------------
-    // SystemUI: kilit, kilit açma, güvenilir cihaz
+    // SystemUI: kilit, kilit açma, güvenilir cihaz  (YALNIZCA "zorla çal" modu açıkken)
     // ---------------------------------------------------------------------------------------
 
     /**
-     * Stok akış: ekran kapanırken playSounds(true), kilit açılınca playSounds(false), güvenilir cihazda
-     * playTrustedSound(). Özel dosya varsa orijinal çağrı atlanır ve ses biz çalarız; böylece Settings
-     * yoluna, SoundPool'un açılışta bir kez yüklenmesine ya da eksik stok dosyaya bağımlı kalmayız.
+     * Varsayılan: hiçbir şeye dokunulmaz; stok mekanizma Settings.Global yolundaki sesi (lock_sound vb.)
+     * kendi kuralları ve ses akışıyla çalar.
+     *
+     * Kullanıcı "zorla çal" modunu açtıysa (bayrak dosyası) SystemUI açılırken burada keyguard çağrıları
+     * yakalanır: özel ses SoundPool ile medya ses seviyesinden çalınır, böylece sessiz/titreşim modu ve
+     * sistem sesi 0 iken de duyulur. "Kilit ekranı sesleri" ayarı kapalıysa stok davranış korunur.
      */
     private fun hookKeyguard(cl: ClassLoader): String {
+        if (!File(SoundPaths.FORCE_FLAG).exists()) return "stok (zorla çalma kapalı)"
+
         val clazz = Class.forName("com.android.systemui.keyguard.KeyguardViewMediator", false, cl)
         val boolType = java.lang.Boolean.TYPE
         val playSounds = clazz.declaredMethods.firstOrNull {
@@ -148,52 +154,41 @@ class SoundModule : XposedModule() {
         if (playSounds != null) {
             hook(playSounds).intercept { chain ->
                 val locked = (chain.getArg(0) as? Boolean) ?: true
-                val kind = if (locked) "lock" else "unlock"
-                val path = findOverride(kind)
-                if (path != null && playOwn(path, kind)) null else chain.proceed()
+                val handled = if (locked) forcePlay("lock_sound", "lock") else forcePlay("unlock_sound", "unlock")
+                if (handled) null else chain.proceed()
             }
             hooked += "playSounds"
         }
         if (playTrusted != null) {
             hook(playTrusted).intercept { chain ->
-                val path = findOverride("trusted")
-                if (path != null && playOwn(path, "trusted")) null else chain.proceed()
+                if (forcePlay("trusted_sound", "trusted")) null else chain.proceed()
             }
             hooked += "playTrustedSound"
         }
-        return hooked.joinToString("+")
+
+        // İlk olayda gecikme olmasın diye mevcut sesleri önceden yükle
+        for (key in listOf("lock_sound", "unlock_sound", "trusted_sound")) {
+            FilesIdx.find(key)?.let { ForcePlayer.preload(it) }
+        }
+        return "zorla çalma: ${hooked.joinToString("+")}"
     }
 
-    /**
-     * Özel sesi çalar. Kilit ekranı sesleri sistem ayarında kapalıysa stok davranışı korur:
-     * hiçbir şey çalmaz (orijinali de atlar). @return true = çağrı biz tarafından karşılandı
-     */
-    private fun playOwn(path: String, kind: String): Boolean {
+    /** @return true = çağrıyı biz karşıladık (stok çalma atlanır); false = stok davranış sürsün */
+    private fun forcePlay(key: String, kind: String): Boolean {
         return try {
+            if (!File(SoundPaths.FORCE_FLAG).exists()) return false // mod kapatıldı: stok davranış
+            val path = FilesIdx.find(key) ?: return false
             val app = currentApp()
-            val enabled = app == null ||
+            val lockSoundsOn = app == null ||
                 Settings.System.getInt(app.contentResolver, "lockscreen_sounds_enabled", 1) != 0
-            if (enabled) {
-                val mp = MediaPlayer()
-                mp.setAudioAttributes(sonification())
-                mp.setDataSource(path)
-                mp.setOnPreparedListener { it.start() }
-                mp.setOnCompletionListener { it.release() }
-                mp.setOnErrorListener { p, _, _ ->
-                    p.release()
-                    true
-                }
-                mp.prepareAsync()
-            }
+            if (!lockSoundsOn) return false // kullanıcı kilit seslerini kapattı: stok davranış (çalmaz)
+            val ok = ForcePlayer.play(path)
             if (File(SoundPaths.DEBUG_FLAG).exists()) {
-                putGlobal(
-                    SoundPaths.SYSUI_LAST_KEY,
-                    "$kind: ${if (enabled) "özel ses çalındı" else "kilit sesleri kapalı"} (${System.currentTimeMillis()})"
-                )
+                putGlobal(SoundPaths.SYSUI_LAST_KEY, "$kind: ${if (ok) "SoundPool ile çalındı" else "çalınamadı"} (${System.currentTimeMillis()})")
             }
-            true
+            ok
         } catch (t: Throwable) {
-            log(Log.ERROR, TAG, "playOwn failed", t)
+            log(Log.ERROR, TAG, "forcePlay failed", t)
             false
         }
     }
@@ -225,7 +220,7 @@ class SoundModule : XposedModule() {
         }
     }
 
-    private fun findOverride(base: String): String? = Overrides.find(base)
+    private fun findOverride(base: String): String? = OverrideIdx.find(base)
 
     private fun currentApp(): Application? = try {
         Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null) as? Application
@@ -271,12 +266,11 @@ class SoundModule : XposedModule() {
 }
 
 /**
- * Override dizininin içeriğini bellekte tutar. Her sorguda yalnızca dizinin değişim zamanına bakılır
- * (tek stat); içerik değiştiyse dizin bir kez okunur. Böylece klavye/kilit olaylarında uzantı başına
- * dosya sorgusu yapılmaz.
+ * Bir dizinin içeriğini bellekte tutar. Her sorguda yalnızca dizinin değişim zamanına bakılır (tek stat);
+ * içerik değiştiyse dizin bir kez okunur. Böylece olaylarda uzantı başına dosya sorgusu yapılmaz.
  */
-private object Overrides {
-    private val dir = File(SoundPaths.OVERRIDE_DIR)
+private class DirIndex(path: String) {
+    private val dir = File(path)
     @Volatile private var stamp = Long.MIN_VALUE
     @Volatile private var map: Map<String, String> = emptyMap()
 
@@ -304,5 +298,73 @@ private object Overrides {
             }
         }
         map = result
+    }
+}
+
+private val OverrideIdx = DirIndex(SoundPaths.OVERRIDE_DIR)
+private val FilesIdx = DirIndex(SoundPaths.FILES_DIR)
+
+/**
+ * "Zorla çal" modu için tek bir SoundPool (stok kilit sesinin de kullandığı motor), medya ses akışı.
+ * Ses dosyaları yüklenip bellekte tutulur; olayda anında çalar. Dosya değişirse yeniden yüklenir.
+ */
+private object ForcePlayer {
+    private class Entry(val id: Int, val stamp: Long, var loaded: Boolean)
+
+    private var pool: SoundPool? = null
+    private val entries = HashMap<String, Entry>()
+    private var pendingPlayId = 0
+
+    private fun ensurePool(): SoundPool {
+        pool?.let { return it }
+        val p = SoundPool.Builder()
+            .setMaxStreams(2)
+            .setAudioAttributes(
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_MEDIA)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
+            )
+            .build()
+        p.setOnLoadCompleteListener { sp, id, status ->
+            synchronized(this) {
+                val e = entries.values.firstOrNull { it.id == id }
+                if (status == 0 && e != null) {
+                    e.loaded = true
+                    if (pendingPlayId == id) {
+                        pendingPlayId = 0
+                        sp.play(id, 1f, 1f, 1, 0, 1f)
+                    }
+                }
+            }
+        }
+        pool = p
+        return p
+    }
+
+    @Synchronized
+    fun preload(path: String) {
+        load(path, playWhenLoaded = false)
+    }
+
+    @Synchronized
+    fun play(path: String): Boolean = load(path, playWhenLoaded = true)
+
+    private fun load(path: String, playWhenLoaded: Boolean): Boolean {
+        val p = ensurePool()
+        val stamp = File(path).lastModified()
+        val cur = entries[path]
+        if (cur != null && cur.stamp == stamp) {
+            if (playWhenLoaded) {
+                if (cur.loaded) p.play(cur.id, 1f, 1f, 1, 0, 1f) else pendingPlayId = cur.id
+            }
+            return true
+        }
+        if (cur != null) p.unload(cur.id)
+        val id = p.load(path, 1)
+        if (id == 0) return false
+        entries[path] = Entry(id, stamp, false)
+        if (playWhenLoaded) pendingPlayId = id
+        return true
     }
 }
