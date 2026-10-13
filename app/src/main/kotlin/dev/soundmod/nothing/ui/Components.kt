@@ -2,11 +2,14 @@ package dev.soundmod.nothing.ui
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.interaction.InteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.PlayArrow
@@ -61,24 +64,27 @@ fun segmentShape(index: Int, count: Int, big: Dp = 28.dp, small: Dp = 6.dp): Sha
 }
 
 /**
- * Liste öğeleri ilk açılışta sırayla yaylanarak belirir. Her anahtar için yalnızca bir kez (sekme
- * ya da liste yeniden oluşsa da tekrar oynamaz) ve yalnızca ilk birkaç öğede çalışır; hızlı kaydırırken
- * ekrana giren öğeler anında görünür, boş satır kalmaz.
+ * Liste öğeleri ekrana girerken hızlıca (200 ms) belirir: hafif yukarı kayma, büyüme ve solma.
+ * İlk açılışta ilk birkaç öğe sırayla gelir; kaydırma sürerken gecikme yoktur, böylece hızlı
+ * kaydırmada animasyon geriden gelmez ve boş satır kalmaz.
  */
 @Composable
-fun Modifier.staggerIn(index: Int, seen: MutableSet<Any>, key: Any): Modifier {
+fun Modifier.staggerIn(index: Int, listState: LazyListState): Modifier {
     val reduce = LocalReduceMotion.current
-    val animate = remember { !reduce && index < 8 && seen.add(key) }
-    val p = remember { Animatable(if (animate) 0f else 1f) }
+    val p = remember { Animatable(if (reduce) 1f else 0f) }
     LaunchedEffect(Unit) {
-        if (animate) {
-            delay(index * 30L)
-            p.animateTo(1f, spring(dampingRatio = 0.8f, stiffness = Spring.StiffnessMedium))
+        if (!reduce) {
+            if (!listState.isScrollInProgress && index < 8) delay(index * 25L)
+            p.animateTo(1f, tween(durationMillis = 200, easing = FastOutSlowInEasing))
         }
     }
     return this.graphicsLayer {
-        alpha = p.value.coerceIn(0f, 1f)
-        translationY = (1f - p.value) * 32f
+        val v = p.value
+        alpha = v.coerceIn(0f, 1f)
+        translationY = (1f - v) * 36f
+        val sc = 0.94f + 0.06f * v
+        scaleX = sc
+        scaleY = sc
     }
 }
 
@@ -112,4 +118,10 @@ fun PlayPauseButton(playing: Boolean, onClick: () -> Unit) {
 }
 
 /** Çalma durumu: hangi öğe çalıyor, ilerleme */
-data class PlayerUi(val key: String? = null, val playing: Boolean = false, val progress: Float = 0f)
+data class PlayerUi(
+    val key: String? = null,
+    val playing: Boolean = false,
+    val progress: Float = 0f,
+    val positionMs: Int = 0,
+    val durationMs: Int = 0
+)

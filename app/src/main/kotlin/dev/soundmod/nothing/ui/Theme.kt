@@ -12,6 +12,7 @@ import androidx.compose.material3.dynamicDarkColorScheme
 import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.remember
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
@@ -37,10 +38,13 @@ fun SoundModTheme(
         else -> isSystemInDarkTheme()
     }
     val ctx = LocalContext.current
-    val scheme = if (dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
-    } else {
-        Palettes.scheme(Palettes.list[palette.coerceIn(0, Palettes.list.lastIndex)], dark)
+    val useDynamic = dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val scheme = remember(useDynamic, dark, palette) {
+        if (useDynamic) {
+            if (dark) dynamicDarkColorScheme(ctx) else dynamicLightColorScheme(ctx)
+        } else {
+            Palettes.scheme(Palettes.list[palette.coerceIn(0, Palettes.list.lastIndex)], dark)
+        }
     }
 
     // Durum/gezinti çubuğu simgeleri uygulama temasına uysun (sistem temasından bağımsız seçilebildiği için)

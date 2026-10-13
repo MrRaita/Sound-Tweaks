@@ -98,6 +98,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import dev.soundmod.nothing.core.RootInfo
 import dev.soundmod.nothing.core.SoundCatalog
 import dev.soundmod.nothing.core.SoundSlot
 import dev.soundmod.nothing.core.SystemSound
@@ -107,6 +108,7 @@ data class UiActions(
     val refresh: () -> Unit,
     val refreshSys: () -> Unit,
     val reloadLibrary: () -> Unit,
+    val ensureLibrary: () -> Unit,
     val playLibrary: (String) -> Unit,
     val playSlot: (SoundSlot) -> Unit,
     val testFx: (Int) -> Unit,
@@ -125,7 +127,10 @@ data class UiActions(
     val installModule: () -> Unit,
     val reboot: () -> Unit,
     val buildReport: () -> Unit,
-    val clearReport: () -> Unit
+    val clearReport: () -> Unit,
+    val dismissIntro: () -> Unit,
+    val showIntro: () -> Unit,
+    val setDebugLog: (Boolean) -> Unit
 )
 
 @Composable
@@ -138,9 +143,11 @@ fun SoundModScreen(
     var tab by remember { mutableIntStateOf(0) }
     val titles = listOf("Sesler", "Kütüphane", "Ayarlar")
     val listStates = listOf(rememberLazyListState(), rememberLazyListState(), rememberLazyListState())
-    val seen = remember { List(3) { mutableSetOf<Any>() } }
 
-    LaunchedEffect(tab) { if (tab == 2) a.refreshSys() }
+    LaunchedEffect(tab) {
+        if (tab == 1) a.ensureLibrary()
+        if (tab == 2) a.refreshSys()
+    }
 
     CompositionLocalProvider(LocalReduceMotion provides state.reduceMotion) {
         Scaffold(
@@ -184,9 +191,9 @@ fun SoundModScreen(
                     label = "tabs"
                 ) { t ->
                     when (t) {
-                        0 -> SoundsTab(state, player, a, listStates[0], seen[0])
-                        1 -> LibraryTab(state, player, a, listStates[1], seen[1])
-                        else -> SettingsTab(state, a, listStates[2], seen[2])
+                        0 -> SoundsTab(state, player, a, listStates[0])
+                        1 -> LibraryTab(state, player, a, listStates[1])
+                        else -> SettingsTab(state, a, listStates[2])
                     }
                 }
                 if (state.busy && !state.reduceMotion) {
@@ -196,6 +203,7 @@ fun SoundModScreen(
         }
     }
 
+    if (state.showIntro) IntroDialog(a.dismissIntro)
     state.report?.let { text -> ReportSheet(text, a.clearReport) }
 }
 
@@ -253,8 +261,7 @@ private fun SoundsTab(
     state: UiState,
     player: State<PlayerUi>,
     a: UiActions,
-    listState: LazyListState,
-    seen: MutableSet<Any>
+    listState: LazyListState
 ) {
     var sheetSlot by remember { mutableStateOf<SoundSlot?>(null) }
     var pickerSlot by remember { mutableStateOf<SoundSlot?>(null) }
@@ -274,7 +281,7 @@ private fun SoundsTab(
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Root izni yok", style = MaterialTheme.typography.titleMedium)
                         Text("Ses değiştirmek için kök yöneticisinde SoundMod'a izin ver.", style = MaterialTheme.typography.bodyMedium)
-                        TextButton(onClick = a.refresh) { Text("Yeniden dene") }
+                        OutlinedButton(onClick = a.refresh) { Text("Yeniden dene") }
                     }
                 }
             }
@@ -293,7 +300,7 @@ private fun SoundsTab(
                     player = player,
                     onClick = { sheetSlot = ss.slot },
                     onPlay = { a.playSlot(ss.slot) },
-                    modifier = Modifier.animateItem().staggerIn(base + i, seen, ss.slot.id)
+                    modifier = Modifier.animateItem().staggerIn(base + i, listState)
                 )
             }
         }
@@ -335,6 +342,7 @@ private fun SoundsTab(
     }
 
     pickerSlot?.let { slot ->
+        LaunchedEffect(slot) { a.ensureLibrary() }
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(onDismissRequest = { pickerSlot = null }, sheetState = sheetState) {
             Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
@@ -409,13 +417,8 @@ private fun SlotRow(
             }
             PlayPauseButton(playing = playing, onClick = onPlay)
         }
-        AnimatedVisibility(visible = playing) {
-            // Tam uzunlukta sürekli akan dalga (kısa seslerde düz çizgi kalmasın)
-            LinearWavyProgressIndicator(
-                progress = { 1f },
-                amplitude = { 1f },
-                modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 14.dp)
-            )
+        AnimatedVisibility(visible = active) {
+            PlayProgress(player, Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp))
         }
     }
 }
@@ -429,8 +432,7 @@ private fun LibraryTab(
     state: UiState,
     player: State<PlayerUi>,
     a: UiActions,
-    listState: LazyListState,
-    seen: MutableSet<Any>
+    listState: LazyListState
 ) {
     Column(Modifier.fillMaxSize()) {
         Row(
@@ -451,8 +453,7 @@ private fun LibraryTab(
             player = player,
             onPlay = a.playLibrary,
             onPick = null,
-            listState = listState,
-            seen = seen
+            listState = listState
         )
     }
 }
@@ -464,8 +465,7 @@ private fun SoundList(
     player: State<PlayerUi>,
     onPlay: (String) -> Unit,
     onPick: ((SystemSound) -> Unit)?,
-    listState: LazyListState = rememberLazyListState(),
-    seen: MutableSet<Any> = remember { mutableSetOf() }
+    listState: LazyListState = rememberLazyListState()
 ) {
     var query by remember { mutableStateOf("") }
     var category by remember { mutableStateOf<String?>(null) }
@@ -530,7 +530,7 @@ private fun SoundList(
                             player = player,
                             onPlay = { onPlay(s.path) },
                             onPick = onPick?.let { pick -> { pick(s) } },
-                            modifier = Modifier.animateItem().staggerIn(i, seen, s.path)
+                            modifier = Modifier.animateItem().staggerIn(i, listState)
                         )
                     }
                 }
@@ -575,12 +575,8 @@ private fun SoundRow(
                     FilledTonalIconButton(onClick = onPick) { Icon(Icons.Default.Check, "Seç") }
                 }
             }
-            AnimatedVisibility(visible = playing) {
-                LinearWavyProgressIndicator(
-                    progress = { 1f },
-                    amplitude = { 1f },
-                    modifier = Modifier.fillMaxWidth().padding(start = 20.dp, end = 20.dp, bottom = 12.dp)
-                )
+            AnimatedVisibility(visible = active) {
+                PlayProgress(player, Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp))
             }
         }
     }
@@ -597,7 +593,7 @@ private fun SoundRow(
 // ------------------------------------------------------------------------------------------
 
 @Composable
-private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, seen: MutableSet<Any>) {
+private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) {
     var confirmRestart by remember { mutableStateOf(false) }
     val container = MaterialTheme.colorScheme.surfaceContainerHigh
 
@@ -609,7 +605,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
         // ---- Durum ----
         item { GroupHeader("Durum") }
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(0, seen, "settings_0")) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(0, listState)) {
                 StatusCard(
                     shape = segmentShape(0, 3), container = container,
                     title = "Root", ok = state.root == RootState.GRANTED,
@@ -617,8 +613,9 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         RootState.GRANTED -> "Root izni verildi"
                         RootState.DENIED -> "Root izni yok. Kök yöneticisinde SoundMod'a izin ver."
                         RootState.UNKNOWN -> "Kontrol ediliyor…"
-                    }
-                ) { TextButton(onClick = a.refresh) { Text("Yeniden kontrol et") } }
+                    },
+                    details = rootDetails(state.rootInfo)
+                ) { OutlinedButton(onClick = a.refresh) { Text("Yeniden kontrol et") } }
                 StatusCard(
                     shape = segmentShape(1, 3), container = container,
                     title = "Vector modülü", ok = state.hookStatus != null,
@@ -648,7 +645,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
         item {
             val s = state.sys
             val ringerOk = s.ringer == "Normal" && !s.systemMuted
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(1, seen, "settings_1")) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(1, listState)) {
                 SettingsCard(segmentShape(0, 2), container) {
                     Text("Android'in kendi ses ayarları", style = MaterialTheme.typography.titleMedium)
                     Text(
@@ -696,7 +693,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
         // ---- Ses işleme ----
         item { GroupHeader("Ses işleme") }
         item {
-            Column(modifier = Modifier.staggerIn(2, seen, "settings_2")) {
+            Column(modifier = Modifier.staggerIn(2, listState)) {
                 SettingsCard(segmentShape(0, 1), container) {
                     SwitchRow(
                         "Seviyeyi normalize et",
@@ -738,7 +735,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
         item { GroupHeader("Görünüm") }
         item {
             val dynamicOk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(3, seen, "settings_3")) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(3, listState)) {
                 SettingsCard(segmentShape(0, 3), container) {
                     Text("Tema", style = MaterialTheme.typography.titleMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -791,7 +788,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
         // ---- Gelişmiş ----
         item { GroupHeader("Gelişmiş") }
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(4, seen, "settings_4")) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(4, listState)) {
                 SettingsCard(segmentShape(0, 2), container) {
                     Text("Sistem Arayüzü", style = MaterialTheme.typography.titleMedium)
                     Text(
@@ -818,13 +815,21 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         enabled = state.root == RootState.GRANTED,
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Tanı raporu oluştur") }
+                    SwitchRow(
+                        "Ayrıntılı olay kaydı",
+                        "Kilit ve ekran görüntüsü olaylarını rapora yazar. Kapalıyken arka planda hiçbir şey yazılmaz.",
+                        state.debugLog, state.root == RootState.GRANTED, a.setDebugLog
+                    )
+                    OutlinedButton(onClick = a.showIntro, modifier = Modifier.fillMaxWidth()) {
+                        Text("Başlangıç bilgisini yeniden göster")
+                    }
                 }
             }
         }
 
         item {
             Text(
-                "SoundMod 0.3.0",
+                "SoundMod 0.4.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
@@ -859,6 +864,7 @@ private fun StatusCard(
     title: String,
     ok: Boolean,
     text: String,
+    details: List<Pair<String, String>> = emptyList(),
     actions: @Composable () -> Unit
 ) {
     Card(
@@ -876,6 +882,21 @@ private fun StatusCard(
                 Text(title, style = MaterialTheme.typography.titleMedium)
             }
             Text(text, style = MaterialTheme.typography.bodyMedium)
+            if (details.isNotEmpty()) {
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    details.forEach { (k, v) ->
+                        Row {
+                            Text(
+                                k,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.width(92.dp)
+                            )
+                            Text(v, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
+                        }
+                    }
+                }
+            }
             actions()
         }
     }
@@ -979,5 +1000,79 @@ private fun ReportSheet(text: String, onDismiss: () -> Unit) {
                 OutlinedButton(onClick = onDismiss) { Text("Kapat") }
             }
         }
+    }
+}
+
+
+// ------------------------------------------------------------------------------------------
+// Çalma ilerlemesi, root bilgisi, ilk açılış bilgisi
+// ------------------------------------------------------------------------------------------
+
+/** Ses süresi boyunca saniye saniye ilerleyen dalgalı çubuk; dalga baştan sona görünür. */
+@Composable
+private fun PlayProgress(player: State<PlayerUi>, modifier: Modifier = Modifier) {
+    Column(modifier) {
+        LinearWavyProgressIndicator(
+            progress = { player.value.progress },
+            amplitude = { 1f },
+            modifier = Modifier.fillMaxWidth()
+        )
+        Text(
+            timeText(player.value.positionMs, player.value.durationMs),
+            style = MaterialTheme.typography.labelSmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.align(Alignment.End).padding(top = 4.dp)
+        )
+    }
+}
+
+private fun timeText(pos: Int, dur: Int): String {
+    fun f(ms: Int): String =
+        if (dur < 10_000) String.format(java.util.Locale.US, "%.1f sn", ms / 1000f)
+        else String.format(java.util.Locale.US, "%d:%02d", ms / 60000, (ms / 1000) % 60)
+    return "${f(pos)} / ${f(dur)}"
+}
+
+private fun rootDetails(i: RootInfo): List<Pair<String, String>> = buildList {
+    if (i.manager.isNotBlank()) {
+        add("Yönetici" to (i.manager + if (i.managerVersion.isNotBlank()) " · ${i.managerVersion}" else ""))
+    }
+    if (i.suVersion.isNotBlank()) add("su sürümü" to i.suVersion)
+    if (i.kernel.isNotBlank()) add("Çekirdek" to i.kernel)
+    if (i.kernelMode.isNotBlank()) add("Mod" to i.kernelMode)
+    if (i.selinux.isNotBlank()) add("SELinux" to i.selinux)
+    if (i.context.isNotBlank()) add("Bağlam" to i.context)
+}
+
+@Composable
+private fun IntroDialog(onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Başlamadan önce") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                IntroItem("Root izni", "Sesler root ile dağıtılır. Kök yöneticin izin isteyecek.")
+                IntroItem(
+                    "Vector'da etkinleştir",
+                    "SoundMod'u aç; kapsamda Sistem Çerçevesi ve Sistem Arayüzü seçili olsun, sonra cihazı yeniden başlat."
+                )
+                IntroItem(
+                    "Sistem Arayüzünü yenile (Ayarlar → Gelişmiş)",
+                    "Modülü yeni etkinleştirdiysen ya da kilit/ekran görüntüsü sesleri çalmıyorsa, cihazı yeniden " +
+                        "başlatmadan Sistem Arayüzünü yeniden başlatır. Ekran birkaç saniye yeniden çizilir, açık " +
+                        "uygulamalar kapanmaz. Hiçbir ayar bunu kendiliğinden yapmaz; önce sana sorulur."
+                )
+                IntroItem("Takılırsa", "Ayarlar → Gelişmiş → Tanı raporu neyin çalışmadığını gösterir.")
+            }
+        },
+        confirmButton = { TextButton(onClick = onDismiss) { Text("Anladım") } }
+    )
+}
+
+@Composable
+private fun IntroItem(title: String, body: String) {
+    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+        Text(title, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+        Text(body, style = MaterialTheme.typography.bodyMedium)
     }
 }

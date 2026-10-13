@@ -23,9 +23,14 @@ import dev.soundmod.nothing.ui.UiActions
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
 
-    override fun onResume() {
-        super.onResume()
-        vm.refreshSys()
+    override fun onStart() {
+        super.onStart()
+        vm.startSysWatch()
+    }
+
+    override fun onStop() {
+        vm.stopSysWatch()
+        super.onStop()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -52,6 +57,7 @@ class MainActivity : ComponentActivity() {
                     refresh = vm::refreshAll,
                     refreshSys = vm::refreshSys,
                     reloadLibrary = vm::loadLibrary,
+                    ensureLibrary = vm::ensureLibrary,
                     playLibrary = vm::playLibrary,
                     playSlot = vm::playSlot,
                     testFx = vm::testEffect,
@@ -73,7 +79,10 @@ class MainActivity : ComponentActivity() {
                     installModule = vm::installModule,
                     reboot = vm::reboot,
                     buildReport = vm::buildReport,
-                    clearReport = vm::clearReport
+                    clearReport = vm::clearReport,
+                    dismissIntro = vm::dismissIntro,
+                    showIntro = vm::showIntroAgain,
+                    setDebugLog = vm::setDebugLog
                 )
             }
 

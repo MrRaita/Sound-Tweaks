@@ -21,6 +21,7 @@ import dev.soundmod.nothing.core.ApplyInfo
 import dev.soundmod.nothing.core.AudioConverter
 import dev.soundmod.nothing.core.ModuleInstaller
 import dev.soundmod.nothing.core.Root
+import dev.soundmod.nothing.core.RootInfo
 import dev.soundmod.nothing.core.SoundCatalog
 import dev.soundmod.nothing.core.SoundPaths
 import dev.soundmod.nothing.core.SoundRepository
@@ -73,7 +74,10 @@ data class UiState(
     val dynamicColor: Boolean = true,
     val palette: Int = 0,
     val sys: SysState = SysState(),
-    val report: String? = null
+    val report: String? = null,
+    val rootInfo: RootInfo = RootInfo(),
+    val debugLog: Boolean = false,
+    val showIntro: Boolean = false
 )
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -89,7 +93,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             themeMode = prefs.getInt("theme_mode", 0),
             dynamicColor = prefs.getBoolean("dynamic", true),
             palette = prefs.getInt("palette", 0),
-            sys = readSys()
+            sys = readSys(),
+            showIntro = !prefs.getBoolean("intro_seen", false)
         )
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -103,21 +108,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private var mp: MediaPlayer? = null
     private var ticker: Job? = null
 
-    /** Zil modu / ses seviyesi değişince Ayarlar'daki durum kartı anında güncellensin */
+    private var libraryLoaded = false
+    private var watching = false
+    private val uiHandler = Handler(Looper.getMainLooper())
+    private val debouncedSysRefresh = Runnable { refreshSys() }
+
+    private fun scheduleSysRefresh() {
+        uiHandler.removeCallbacks(debouncedSysRefresh)
+        uiHandler.postDelayed(debouncedSysRefresh, 150)
+    }
+
+    /** Zil modu / ses seviyesi değişince durum kartı anında güncellensin (yalnızca uygulama görünürken). */
     private val sysReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            refreshSys()
+            scheduleSysRefresh()
         }
     }
-    private val sysObserver = object : ContentObserver(Handler(Looper.getMainLooper())) {
+    private val sysObserver = object : ContentObserver(uiHandler) {
         override fun onChange(selfChange: Boolean) {
-            refreshSys()
+            scheduleSysRefresh()
         }
     }
 
-    init {
-        refreshAll()
-        loadLibrary()
+    /** Uygulama ön plana gelince çağrılır; dinleyiciler yalnızca görünürken açıktır. */
+    fun startSysWatch() {
+        if (watching) return
+        watching = true
         try {
             val f = IntentFilter().apply {
                 addAction(AudioManager.RINGER_MODE_CHANGED_ACTION)
@@ -130,8 +146,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             cr.registerContentObserver(Settings.System.getUriFor("lockscreen_sounds_enabled"), false, sysObserver)
             cr.registerContentObserver(Settings.Global.getUriFor("charging_sounds_enabled"), false, sysObserver)
         } catch (e: Exception) {
-            // canlı güncelleme olmazsa sekmeye girince yine yenilenir
+            // dinleyici açılamazsa sekmeye girince yine yenilenir
         }
+        refreshSys()
+    }
+
+    /** Uygulama arka plana geçince tüm dinleyiciler kapanır: arka planda hiçbir şey çalışmaz. */
+    fun stopSysWatch() {
+        if (!watching) return
+        watching = false
+        uiHandler.removeCallbacks(debouncedSysRefresh)
+        runCatching { app().unregisterReceiver(sysReceiver) }
+        runCatching { app().contentResolver.unregisterContentObserver(sysObserver) }
+    }
+
+    init {
+        refreshAll()
     }
 
     private fun readSlots() = SoundCatalog.slots.map { SlotState(it, repo.label(it)) }
@@ -143,13 +173,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun refreshAll() {
         viewModelScope.launch(Dispatchers.IO) {
-            val granted = Root.available()
-            if (granted) repo.ensureStore()
+            val p = repo.probe()
             _state.update {
                 it.copy(
-                    root = if (granted) RootState.GRANTED else RootState.DENIED,
-                    hookStatus = if (granted) repo.readStatus() else null,
-                    moduleInstalled = if (granted) ModuleInstaller.isInstalled() else false,
+                    root = if (p.granted) RootState.GRANTED else RootState.DENIED,
+                    hookStatus = p.hookStatus,
+                    moduleInstalled = p.moduleInstalled,
+                    rootInfo = p.info,
+                    debugLog = p.debugLog,
                     slots = readSlots(),
                     sys = readSys()
                 )
@@ -183,12 +214,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    /** Kütüphane yalnızca ilk gerektiğinde (sekme/seçici açılınca) taranır. */
+    fun ensureLibrary() {
+        if (!libraryLoaded) loadLibrary()
+    }
+
     fun loadLibrary() {
+        libraryLoaded = true
         _state.update { it.copy(libraryLoading = true) }
         viewModelScope.launch(Dispatchers.IO) {
             val list = SoundScanner.scan()
             _state.update { it.copy(library = list, libraryLoading = false) }
         }
+    }
+
+    /** IO iş parçacığında: kütüphane henüz taranmadıysa şimdi tara. */
+    private fun libraryNow(): List<SystemSound> {
+        val cur = _state.value.library
+        if (libraryLoaded && cur.isNotEmpty()) return cur
+        val l = SoundScanner.scan()
+        libraryLoaded = true
+        _state.update { it.copy(library = l, libraryLoading = false) }
+        return l
     }
 
     // ---- Ayarlar ----
@@ -339,7 +386,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 withContext(Dispatchers.Main) { toggle(key, "") }
                 return@launch
             }
-            val path = repo.previewPath(slot) ?: repo.stockPath(slot, _state.value.library)
+            val path = repo.previewPath(slot) ?: repo.stockPath(slot, libraryNow())
             if (path == null) {
                 msg("Bu ses için önizleme dosyası bulunamadı")
                 return@launch
@@ -380,7 +427,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             np.setDataSource(path)
             np.setOnPreparedListener {
                 it.start()
-                _player.value = PlayerUi(key, true, 0f)
+                _player.value = PlayerUi(key, true, 0f, 0, runCatching { it.duration }.getOrDefault(0))
                 startTicker()
             }
             np.setOnCompletionListener { release() }
@@ -405,8 +452,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val p = mp ?: break
                 val d = runCatching { p.duration }.getOrDefault(0)
                 val pos = runCatching { p.currentPosition }.getOrDefault(0)
-                if (d > 0) _player.update { it.copy(progress = (pos.toFloat() / d).coerceIn(0f, 1f)) }
-                delay(40)
+                val frac = if (d > 0) (pos.toFloat() / d).coerceIn(0f, 1f) else 0f
+                _player.update { it.copy(progress = frac, positionMs = pos, durationMs = d) }
+                delay(50)
             }
         }
     }
@@ -466,6 +514,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             echo "lock/unlock/trusted stok dosyalar:"; ls -lZ /product/media/audio/ui/ 2>&1 | grep -i -E "lock|trusted"
             echo "== hook durumu =="; cat ${SoundPaths.STATUS_SYSTEM} 2>&1; echo
             settings get global ${SoundPaths.SYSUI_STATUS_KEY}
+            echo "ayrintili olay kaydi: ${'$'}([ -e ${SoundPaths.DEBUG_FLAG} ] && echo ACIK || echo kapali)"
             echo "son SystemUI olayi:"; settings get global ${SoundPaths.SYSUI_LAST_KEY}
             echo "== sistem arayuzu =="; pidof com.android.systemui
             echo "== selinux (son reddedilenler) =="
@@ -476,14 +525,27 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(report = r.out.ifBlank { "Rapor boş (kod ${r.code})" }) }
     }
 
+    fun dismissIntro() {
+        prefs.edit().putBoolean("intro_seen", true).apply()
+        _state.update { it.copy(showIntro = false) }
+    }
+
+    fun showIntroAgain() {
+        _state.update { it.copy(showIntro = true) }
+    }
+
+    fun setDebugLog(on: Boolean) = work {
+        val r = repo.setDebug(on)
+        if (r.ok) _state.update { it.copy(debugLog = on) } else msg("Ayar değiştirilemedi: ${r.out}")
+    }
+
     fun clearReport() {
         _state.update { it.copy(report = null) }
     }
 
     override fun onCleared() {
         release()
-        runCatching { app().unregisterReceiver(sysReceiver) }
-        runCatching { app().contentResolver.unregisterContentObserver(sysObserver) }
+        stopSysWatch()
         super.onCleared()
     }
 }

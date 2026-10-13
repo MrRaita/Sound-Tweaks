@@ -135,10 +135,14 @@ class SoundModule : XposedModule() {
         }
         if (playSounds == null && playTrusted == null) error("playSounds/playTrustedSound bulunamadı")
 
-        // Küçük özel metotlar çağıranlarına satır içi derlenmiş olabilir; çağıranları deopt et
-        clazz.declaredMethods.forEach { m ->
-            if (m != playSounds && m != playTrusted) runCatching { deoptimize(m) }
+        // Küçük özel metotlar çağıranlarına satır içi derlenmiş olabilir. Sistemi az kurcalamak için yalnızca
+        // ses akışındaki çağıranları (çıkış bitişi, uykuya geçiş, *Sound*, erişim köprüleri) deopt ederiz;
+        // hiçbiri bulunamazsa (farklı ROM) sınıftaki tüm metotlara düşeriz.
+        val others = clazz.declaredMethods.filter { it != playSounds && it != playTrusted }
+        val callers = others.filter {
+            it.name.contains("ExitFinished") || it.name.contains("GoingToSleep") || it.name.contains("Sound")
         }
+        (if (callers.isEmpty()) others else callers).forEach { runCatching { deoptimize(it) } }
 
         val hooked = ArrayList<String>()
         if (playSounds != null) {
@@ -181,7 +185,12 @@ class SoundModule : XposedModule() {
                 }
                 mp.prepareAsync()
             }
-            putGlobal(SoundPaths.SYSUI_LAST_KEY, "$kind: ${if (enabled) "özel ses çalındı" else "kilit sesleri kapalı"} (${System.currentTimeMillis()})")
+            if (File(SoundPaths.DEBUG_FLAG).exists()) {
+                putGlobal(
+                    SoundPaths.SYSUI_LAST_KEY,
+                    "$kind: ${if (enabled) "özel ses çalındı" else "kilit sesleri kapalı"} (${System.currentTimeMillis()})"
+                )
+            }
             true
         } catch (t: Throwable) {
             log(Log.ERROR, TAG, "playOwn failed", t)
@@ -199,24 +208,24 @@ class SoundModule : XposedModule() {
     // Yardımcılar
     // ---------------------------------------------------------------------------------------
 
+    @Volatile private var nameField: java.lang.reflect.Field? = null
+
     private fun fileNameOf(resource: Any?): String? {
         if (resource == null) return null
         return try {
-            val f = resource.javaClass.getDeclaredField("mFileName")
-            f.isAccessible = true
-            f.get(resource) as? String
+            var f = nameField
+            if (f == null) {
+                f = resource.javaClass.getDeclaredField("mFileName")
+                f.isAccessible = true
+                nameField = f
+            }
+            f!!.get(resource) as? String
         } catch (t: Throwable) {
             null
         }
     }
 
-    private fun findOverride(base: String): String? {
-        for (ext in SoundPaths.EXTENSIONS) {
-            val f = File(SoundPaths.OVERRIDE_DIR, "$base.$ext")
-            if (f.isFile && f.length() > 0 && f.canRead()) return f.absolutePath
-        }
-        return null
-    }
+    private fun findOverride(base: String): String? = Overrides.find(base)
 
     private fun currentApp(): Application? = try {
         Class.forName("android.app.ActivityThread").getMethod("currentApplication").invoke(null) as? Application
@@ -258,5 +267,42 @@ class SoundModule : XposedModule() {
 
     private companion object {
         const val TAG = "SoundMod"
+    }
+}
+
+/**
+ * Override dizininin içeriğini bellekte tutar. Her sorguda yalnızca dizinin değişim zamanına bakılır
+ * (tek stat); içerik değiştiyse dizin bir kez okunur. Böylece klavye/kilit olaylarında uzantı başına
+ * dosya sorgusu yapılmaz.
+ */
+private object Overrides {
+    private val dir = File(SoundPaths.OVERRIDE_DIR)
+    @Volatile private var stamp = Long.MIN_VALUE
+    @Volatile private var map: Map<String, String> = emptyMap()
+
+    fun find(base: String): String? {
+        val m = dir.lastModified()
+        if (m != stamp) {
+            rebuild()
+            stamp = m
+        }
+        return map[base]
+    }
+
+    private fun rebuild() {
+        val files = dir.listFiles()
+        if (files == null) {
+            map = emptyMap()
+            return
+        }
+        val result = HashMap<String, String>()
+        for (ext in SoundPaths.EXTENSIONS) { // uzantı öncelik sırası
+            for (f in files) {
+                if (f.extension.lowercase() == ext && f.length() > 0) {
+                    result.putIfAbsent(f.nameWithoutExtension, f.absolutePath)
+                }
+            }
+        }
+        map = result
     }
 }

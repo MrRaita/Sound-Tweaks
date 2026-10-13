@@ -42,24 +42,33 @@ class SoundRepository(private val ctx: Context) {
 
     // ---- Depo ----
 
-    fun ensureStore(): Root.Result {
+    /** Depo (dizinler, sahiplik, SELinux bağlamı) probe sırasında bir kez hazırlanır. */
+    @Volatile private var storeReady = false
+
+    fun probe(): Probe {
+        val p = RootProbe.run()
+        if (p.granted) storeReady = true
+        return p
+    }
+
+    private fun ensureStore(): Root.Result {
         val b = Root.q(SoundPaths.BASE)
-        return Root.run(
+        val r = Root.run(
             "mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && " +
-                "rm -f ${Root.q(SoundPaths.BASE + "/.status_system")} && " +
                 "chown -R system:system $b && chmod -R 755 $b && " +
                 "(chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b)"
         )
+        if (r.ok) storeReady = true
+        return r
     }
 
-    fun readStatus(): String? {
-        val a = Root.run("cat ${SoundPaths.STATUS_SYSTEM}")
-        val b = Root.run("settings get global ${SoundPaths.SYSUI_STATUS_KEY}")
-        val parts = listOfNotNull(
-            a.takeIf { it.ok && it.out.isNotBlank() }?.out,
-            b.takeIf { it.ok && it.out.isNotBlank() && it.out.trim() != "null" }?.out
+    /** Ayrıntılı olay kaydı: bayrak dosyası varken SystemUI hook'u son olayını yazar (varsayılan kapalı). */
+    fun setDebug(on: Boolean): Root.Result {
+        val f = Root.q(SoundPaths.DEBUG_FLAG)
+        return Root.run(
+            if (on) "touch $f && (chcon ${SoundPaths.CONTEXT} $f || true)"
+            else "rm -f $f; settings delete global ${SoundPaths.SYSUI_LAST_KEY}"
         )
-        return parts.takeIf { it.isNotEmpty() }?.joinToString("\n")
     }
 
     fun restartSystemUi() {
@@ -149,8 +158,10 @@ class SoundRepository(private val ctx: Context) {
     }
 
     private fun deploy(slot: SoundSlot, src: File, ext: String, direct: Boolean): Result<Unit> {
-        val st = ensureStore()
-        if (!st.ok) return Result.failure(IllegalStateException("Depo hazırlanamadı: ${st.out}"))
+        if (!storeReady) {
+            val st = ensureStore()
+            if (!st.ok) return Result.failure(IllegalStateException("Depo hazırlanamadı: ${st.out}"))
+        }
 
         val fix = { dest: String ->
             "chown system:system ${Root.q(dest)} && chmod 644 ${Root.q(dest)} && " +

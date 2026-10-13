@@ -19,6 +19,22 @@ Hedef: Nothing Phone (4a) · Nothing OS 4.1 · Android 16 (diğer AOSP tabanlı 
   istenirse ortak seviyeye normalize edilir (ffmpeg gerekmez).
 * Orijinal dosyalara dokunulmaz; "Varsayılana dön" ya da modülü kapatmak her şeyi eski haline getirir.
 
+## Tasarım ilkeleri
+
+1. Material Design, modern ve akıcı arayüz.
+2. Sisteme olabildiğince az müdahale ederek olabildiğince çok ve dengeli değişiklik getirmek.
+3. Arka planda gereksiz kaynak kullanımını olabildiğince az tutmak.
+
+Bunun uygulamadaki karşılıkları:
+
+* Uygulamada servis, açılış alıcısı ya da arka plan işi yok; kapalıyken hiçbir şey çalışmaz.
+* Sistem ses dinleyicileri (zil modu, ses seviyesi, ayar gözlemcileri) yalnızca uygulama ekrandayken açıktır.
+* Root sorguları açılışta tek `su` çağrısında toplanır; kütüphane taraması ilk gerektiğinde yapılır.
+* Sistem süreçlerindeki hook'lar olay tabanlıdır (yoklama ya da sürekli iş parçacığı yok). Override dizini bellekte
+  önbelleklenir; her olayda yalnızca dizinin değişim zamanına bakılır.
+* Yalnızca ses akışındaki metotlar derlenmiş koddan çıkarılır (deopt); tüm sınıf değil.
+* SystemUI olay kaydı varsayılan olarak kapalıdır (Ayarlar → Gelişmiş → Ayrıntılı olay kaydı).
+
 ## Kurulum
 
 1. Repoyu GitHub'a it → **Actions → Build APK** çalışır → `SoundMod-apk` artifact'ındaki APK'yı kur.

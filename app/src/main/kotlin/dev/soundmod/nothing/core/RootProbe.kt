@@ -1,0 +1,94 @@
+package dev.soundmod.nothing.core
+
+/** Root yöneticisi ve sistem hakkında kısa bilgi (Ayarlar'daki Root kartı) */
+data class RootInfo(
+    val manager: String = "",
+    val managerVersion: String = "",
+    val suVersion: String = "",
+    val kernel: String = "",
+    val kernelMode: String = "",
+    val selinux: String = "",
+    val context: String = ""
+)
+
+/** Açılışta tek `su` çağrısıyla toplanan her şey */
+data class Probe(
+    val granted: Boolean,
+    val info: RootInfo,
+    val hookStatus: String?,
+    val moduleInstalled: Boolean,
+    val debugLog: Boolean
+)
+
+/**
+ * Uygulama açılışında root sorgularını tek bir `su` sürecinde toplar (her sorgu için ayrı süreç
+ * açmak hem yavaş hem gereksiz iş). Aynı çağrı ses deposunu da hazırlar.
+ */
+object RootProbe {
+    private const val MODULE_ID = "soundmod-selinux"
+
+    fun run(): Probe {
+        val b = Root.q(SoundPaths.BASE)
+        val script = """
+            echo "uid=${'$'}(id -u)"
+            if [ "${'$'}(id -u)" = "0" ]; then
+              rm -f ${Root.q(SoundPaths.BASE + "/.status_system")}
+              mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && chown -R system:system $b && chmod -R 755 $b && (chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b)
+            fi
+            echo "ctx=${'$'}(id -Z 2>/dev/null)"
+            echo "kernel=${'$'}(uname -r)"
+            echo "selinux=${'$'}(getenforce 2>/dev/null)"
+            echo "ksud=${'$'}(ksud --version 2>/dev/null || /data/adb/ksud --version 2>/dev/null)"
+            echo "magisk=${'$'}(magisk -v 2>/dev/null)"
+            echo "magiskc=${'$'}(magisk -V 2>/dev/null)"
+            echo "apd=${'$'}(/data/adb/ap/bin/apd --version 2>/dev/null)"
+            echo "suv=${'$'}(su -v 2>/dev/null)"
+            echo "lkm=${'$'}(grep -c -i kernelsu /proc/modules 2>/dev/null)"
+            echo "module=${'$'}([ -d /data/adb/modules/$MODULE_ID ] && echo yes)"
+            echo "debug=${'$'}([ -e ${Root.q(SoundPaths.DEBUG_FLAG)} ] && echo yes)"
+            echo "sys=${'$'}(cat ${SoundPaths.STATUS_SYSTEM} 2>/dev/null)"
+            echo "sysui=${'$'}(settings get global ${SoundPaths.SYSUI_STATUS_KEY} 2>/dev/null)"
+        """.trimIndent()
+
+        val r = Root.run(script)
+        val kv = HashMap<String, String>()
+        for (line in r.out.lines()) {
+            val i = line.indexOf('=')
+            if (i > 0) kv[line.substring(0, i)] = line.substring(i + 1).trim()
+        }
+        val granted = kv["uid"] == "0"
+        if (!granted) return Probe(false, RootInfo(), null, false, false)
+
+        val ksud = kv["ksud"].orEmpty()
+        val magisk = kv["magisk"].orEmpty()
+        val apd = kv["apd"].orEmpty()
+        val manager: String
+        val version: String
+        when {
+            ksud.isNotBlank() -> { manager = "KernelSU"; version = ksud }
+            magisk.isNotBlank() -> { manager = "Magisk"; version = (magisk + " " + kv["magiskc"].orEmpty()).trim() }
+            apd.isNotBlank() -> { manager = "APatch"; version = apd }
+            else -> { manager = "Bilinmiyor"; version = "" }
+        }
+        val lkm = (kv["lkm"]?.toIntOrNull() ?: 0) > 0
+        val mode = when {
+            manager == "KernelSU" && lkm -> "LKM (yüklenebilir çekirdek modülü)"
+            manager == "KernelSU" -> "Çekirdeğe yerleşik (GKI / özel çekirdek)"
+            else -> ""
+        }
+        val info = RootInfo(
+            manager = manager,
+            managerVersion = version,
+            suVersion = kv["suv"].orEmpty(),
+            kernel = kv["kernel"].orEmpty(),
+            kernelMode = mode,
+            selinux = kv["selinux"].orEmpty(),
+            context = kv["ctx"].orEmpty()
+        )
+        val hook = listOfNotNull(
+            kv["sys"]?.takeIf { it.isNotBlank() },
+            kv["sysui"]?.takeIf { it.isNotBlank() && it != "null" }
+        ).takeIf { it.isNotEmpty() }?.joinToString("\n")
+        return Probe(true, info, hook, kv["module"] == "yes", kv["debug"] == "yes")
+    }
+}
