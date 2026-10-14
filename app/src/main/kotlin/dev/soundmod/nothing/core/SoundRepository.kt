@@ -108,6 +108,21 @@ class SoundRepository(private val ctx: Context) {
         }
     }
 
+    /** Seçilen sesi susturur (kısa sessiz bir dosya yerleştirir). */
+    fun applySilence(slot: SoundSlot): Result<ApplyInfo> {
+        return try {
+            previewDir.mkdirs()
+            val wav = File(previewDir, "${slot.id}.wav")
+            AudioConverter.writeSilence(wav)
+            val r = deploy(slot, wav, "wav", direct = false)
+            if (r.isFailure) return Result.failure(r.exceptionOrNull()!!)
+            remember(slot, "Sessiz", wav.absolutePath, wav.absolutePath)
+            Result.success(ApplyInfo(null, false))
+        } catch (e: Exception) {
+            Result.failure(e)
+        }
+    }
+
     /** Kayıtlı kaynağı güncel normalize ayarıyla yeniden uygular */
     fun reprocess(slot: SoundSlot, opt: AudioConverter.Options): Result<ApplyInfo> {
         val label = label(slot) ?: return Result.failure(IllegalStateException("Özel ses yok"))

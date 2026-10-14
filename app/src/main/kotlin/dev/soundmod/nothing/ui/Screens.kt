@@ -45,6 +45,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Build as WrenchIcon
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
@@ -57,6 +58,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -138,7 +140,11 @@ data class UiActions(
     val setDebugLog: (Boolean) -> Unit,
     val setForceLock: (Boolean) -> Unit,
     val confirmRestartPrompt: () -> Unit,
-    val dismissRestartPrompt: () -> Unit
+    val dismissRestartPrompt: () -> Unit,
+    val applySilent: (SoundSlot) -> Unit,
+    val setSlotNorm: (String, Int, Int) -> Unit,
+    val reapplySlot: (SoundSlot) -> Unit,
+    val setSkipRestartWarning: (Boolean) -> Unit
 )
 
 @Composable
@@ -149,8 +155,16 @@ fun SoundModScreen(
     a: UiActions
 ) {
     var tab by remember { mutableIntStateOf(0) }
-    val titles = listOf("Sesler", "Kütüphane", "Ayarlar")
-    val listStates = listOf(rememberLazyListState(), rememberLazyListState(), rememberLazyListState())
+    val titles = listOf("Sesler", "Kütüphane", "Gelişmiş", "Ayarlar")
+    val listStates = List(4) { rememberLazyListState() }
+    var showRestartDialog by remember { mutableStateOf(false) }
+    val onRestartClick: () -> Unit = {
+        if (state.skipRestartWarning) {
+            a.restartSysUiNow()
+        } else {
+            showRestartDialog = true
+        }
+    }
 
     LaunchedEffect(tab) {
         if (tab == 1) a.ensureLibrary()
@@ -162,7 +176,7 @@ fun SoundModScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             topBar = {
                 Column {
-                    Header(titles[tab], state.reduceMotion)
+                    Header(titles[tab], state.reduceMotion, onRestartClick)
                     if (state.busy) {
                         if (state.reduceMotion) LinearProgressIndicator(Modifier.fillMaxWidth())
                         else LinearWavyProgressIndicator(Modifier.fillMaxWidth())
@@ -178,7 +192,8 @@ fun SoundModScreen(
                     NavigationBar(containerColor = Color.Transparent) {
                         NavigationBarItem(tab == 0, { tab = 0 }, { Icon(Icons.Default.Notifications, null) }, label = { Text("Sesler") })
                         NavigationBarItem(tab == 1, { tab = 1 }, { Icon(Icons.Default.Search, null) }, label = { Text("Kütüphane") })
-                        NavigationBarItem(tab == 2, { tab = 2 }, { Icon(Icons.Default.Settings, null) }, label = { Text("Ayarlar") })
+                        NavigationBarItem(tab == 2, { tab = 2 }, { Icon(Icons.Default.WrenchIcon, null) }, label = { Text("Gelişmiş") })
+                        NavigationBarItem(tab == 3, { tab = 3 }, { Icon(Icons.Default.Settings, null) }, label = { Text("Ayarlar") })
                     }
                 }
             },
@@ -201,7 +216,8 @@ fun SoundModScreen(
                     when (t) {
                         0 -> SoundsTab(state, player, a, listStates[0])
                         1 -> LibraryTab(state, player, a, listStates[1])
-                        else -> SettingsTab(state, a, listStates[2])
+                        2 -> AdvancedTab(state, a, listStates[2])
+                        else -> SettingsTab(state, a, listStates[3], onRestartClick)
                     }
                 }
                 if (state.busy && !state.reduceMotion) {
@@ -211,6 +227,16 @@ fun SoundModScreen(
         }
     }
 
+    if (showRestartDialog) {
+        RestartConfirmDialog(
+            onConfirm = { dontShowAgain ->
+                showRestartDialog = false
+                if (dontShowAgain) a.setSkipRestartWarning(true)
+                a.restartSysUiNow()
+            },
+            onDismiss = { showRestartDialog = false }
+        )
+    }
     state.restartPrompt?.let { RestartPromptDialog(it, a.confirmRestartPrompt, a.dismissRestartPrompt) }
     if (state.showIntro) IntroDialog(a.dismissIntro)
     state.report?.let { text -> ReportSheet(text, a.clearReport) }
@@ -221,32 +247,38 @@ fun SoundModScreen(
 // ------------------------------------------------------------------------------------------
 
 @Composable
-private fun Header(title: String, reduceMotion: Boolean) {
-    Column(
+private fun Header(title: String, reduceMotion: Boolean, onRestart: () -> Unit) {
+    Row(
         Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(start = 24.dp, end = 24.dp, top = 28.dp, bottom = 14.dp)
+            .padding(start = 24.dp, end = 12.dp, top = 24.dp, bottom = 14.dp),
+        verticalAlignment = Alignment.Top
     ) {
-        Text(
-            "SoundMod",
-            style = MaterialTheme.typography.displaySmall,
-            color = MaterialTheme.colorScheme.primary
-        )
-        AnimatedContent(
-            targetState = title,
-            transitionSpec = {
-                if (reduceMotion) fadeIn(tween(0)) togetherWith fadeOut(tween(0))
-                else (fadeIn(tween(240)) + slideInVertically(tween(240)) { it / 3 }) togetherWith
-                    (fadeOut(tween(120)) + slideOutVertically(tween(120)) { -it / 3 })
-            },
-            label = "title"
-        ) { t ->
+        Column(Modifier.weight(1f)) {
             Text(
-                t,
-                style = MaterialTheme.typography.titleMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                "SoundMod",
+                style = MaterialTheme.typography.displaySmall,
+                color = MaterialTheme.colorScheme.primary
             )
+            AnimatedContent(
+                targetState = title,
+                transitionSpec = {
+                    if (reduceMotion) fadeIn(tween(0)) togetherWith fadeOut(tween(0))
+                    else (fadeIn(tween(240)) + slideInVertically(tween(240)) { it / 3 }) togetherWith
+                        (fadeOut(tween(120)) + slideOutVertically(tween(120)) { -it / 3 })
+                },
+                label = "title"
+            ) { t ->
+                Text(
+                    t,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        FilledTonalIconButton(onClick = onRestart) {
+            Icon(Icons.Default.Refresh, contentDescription = "Sistem Arayüzünü yenile")
         }
     }
 }
@@ -346,6 +378,11 @@ private fun SoundsTab(
                         Text("Sistem üzerinden dene")
                     }
                 }
+                Spacer(Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = { a.applySilent(slot); sheetSlot = null },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("Bu sesi sustur") }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { a.reset(slot); sheetSlot = null },
@@ -610,9 +647,263 @@ private fun SoundRow(
 // Ayarlar
 // ------------------------------------------------------------------------------------------
 
+// ------------------------------------------------------------------------------------------
+// Gelişmiş sekmesi: sistem ses anahtarları, ses işleme, kilit sesleri
+// ------------------------------------------------------------------------------------------
+
 @Composable
-private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) {
-    var confirmRestart by remember { mutableStateOf(false) }
+private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) {
+    val container = MaterialTheme.colorScheme.surfaceContainerHigh
+    val changed = state.slots.filter { it.label != null }
+    val globalText = if (state.normalize) "${state.targetDb} dBFS" else "kapalı"
+
+    LazyColumn(
+        state = listState,
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 24.dp),
+        verticalArrangement = Arrangement.spacedBy(3.dp)
+    ) {
+        // ---- Sistem ses anahtarları ----
+        item { GroupHeader("Sistem ses anahtarları") }
+        item {
+            val s = state.sys
+            val ringerOk = s.ringer == "Normal" && !s.systemMuted
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(0, listState)) {
+                SettingsCard(segmentShape(0, 2), container) {
+                    Text("Android'in kendi ses ayarları", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Bunlardan biri kapalıysa ilgili sesler, senin seçtiklerin dahil, hiç çalmaz. " +
+                            "Anahtarlar doğrudan sistem ayarını değiştirir; Ayarlar → Ses bölümündekilerle aynıdır.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    SwitchRow("Dokunma sesleri", "Klavye tuşları ve ekran dokunma sesleri", s.touchSounds, true) {
+                        a.setSystemToggle(SysToggle.TOUCH, it)
+                    }
+                    SwitchRow("Kilit ekranı sesleri", "Kilitleme, kilit açma ve güvenilir cihaz sesleri", s.lockSounds, true) {
+                        a.setSystemToggle(SysToggle.LOCK, it)
+                    }
+                    SwitchRow("Şarj sesleri", "Şarj kablosu takılınca çalan ses", s.chargingSounds, true) {
+                        a.setSystemToggle(SysToggle.CHARGING, it)
+                    }
+                }
+                SettingsCard(segmentShape(1, 2), container) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            if (ringerOk) Icons.Default.Check else Icons.Default.Warning, null,
+                            tint = if (ringerOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
+                        )
+                        Spacer(Modifier.width(10.dp))
+                        Column {
+                            Text("Şu an telefon: ${s.ringer} modda", style = MaterialTheme.typography.titleSmall)
+                            Text(
+                                "Sistem sesi ${s.systemVol}/${s.systemMax}" + (if (s.systemMuted) " (kapalı)" else "") +
+                                    " · Medya sesi ${s.mediaVol}/${s.mediaMax}",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                    Text(
+                        if (ringerOk) "Sesler çalabilir durumda."
+                        else "Telefon sessiz ya da titreşimdeyken, ya da sistem sesi kapalıyken kilit ve dokunma sesleri çalmaz. " +
+                            "Zil modunu ya da ses seviyesini aç.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+
+        // ---- Ses işleme ----
+        item { GroupHeader("Ses işleme") }
+        item {
+            Column(modifier = Modifier.staggerIn(1, listState)) {
+                SettingsCard(segmentShape(0, 1), container) {
+                    SwitchRow(
+                        "Genel normalize",
+                        "Ses başına ayar yapılmadıkça seçtiğin sesler bu ortalama seviyeye getirilir (tepeler yumuşak sınırlanır)",
+                        state.normalize, true, a.setNormalize
+                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("Genel hedef seviye", style = MaterialTheme.typography.bodyLarge)
+                            Text(
+                                "${state.targetDb} dBFS (ortalama)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        FilledTonalIconButton(
+                            onClick = { a.setTargetDb(state.targetDb - 1) }, enabled = state.normalize
+                        ) { Text("−", style = MaterialTheme.typography.titleLarge) }
+                        Spacer(Modifier.width(8.dp))
+                        FilledTonalIconButton(
+                            onClick = { a.setTargetDb(state.targetDb + 1) }, enabled = state.normalize
+                        ) { Text("+", style = MaterialTheme.typography.titleLarge) }
+                    }
+                    Text(
+                        "Ayar yalnızca bundan sonra seçtiklerine uygulanır. Mevcut sesleri güncellemek için:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FilledTonalButton(
+                        onClick = a.reapplyAll,
+                        enabled = state.root == RootState.GRANTED,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Seçili tüm sesleri yeniden işle") }
+                }
+            }
+        }
+
+        item { GroupHeader("Ses başına seviye") }
+        if (changed.isEmpty()) {
+            item(key = "norm_empty") {
+                SettingsCard(segmentShape(0, 1), container) {
+                    Text(
+                        "Henüz değiştirdiğin bir ses yok. Sesler sekmesinden bir ses seçtiğinde burada kendi normalize " +
+                            "ayarını yapabilirsin.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        } else {
+            itemsIndexed(changed, key = { _, ss -> "norm_${ss.slot.id}" }) { i, ss ->
+                SlotNormRow(
+                    shape = segmentShape(i, changed.size),
+                    container = container,
+                    ss = ss,
+                    norm = state.slotNorm[ss.slot.id] ?: SlotNorm(0, state.targetDb),
+                    globalText = globalText,
+                    enabled = state.root == RootState.GRANTED,
+                    onChange = { mode, db -> a.setSlotNorm(ss.slot.id, mode, db) },
+                    onApply = { a.reapplySlot(ss.slot) },
+                    modifier = Modifier.animateItem()
+                )
+            }
+        }
+
+        // ---- Kilit sesleri ----
+        item { GroupHeader("Kilit sesleri") }
+        item {
+            Column(modifier = Modifier.staggerIn(2, listState)) {
+                SettingsCard(segmentShape(0, 1), container) {
+                    SwitchRow(
+                        "Kilit seslerini zorla çal",
+                        "Kilitleme, kilit açma ve güvenilir cihaz seslerini SoundMod medya ses seviyesiyle çalar; " +
+                            "telefon sessiz ya da titreşimdeyken de duyulur.",
+                        state.forceLock, state.root == RootState.GRANTED, a.setForceLock
+                    )
+                    Text(
+                        "Kapalıyken (varsayılan) Android'in kendi mekanizması kullanılır ve hiçbir şeye dokunulmaz. " +
+                            "Açıkken Sistem Arayüzüne bir kanca eklenir; ses SoundPool ile (stok kilit sesinin de " +
+                            "kullandığı motor) çalınır. “Kilit ekranı sesleri” anahtarı kapalıysa ya da medya sesi 0 ise " +
+                            "stok davranışa dönülür.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SlotNormRow(
+    shape: Shape,
+    container: Color,
+    ss: SlotState,
+    norm: SlotNorm,
+    globalText: String,
+    enabled: Boolean,
+    onChange: (Int, Int) -> Unit,
+    onApply: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    var open by rememberSaveable(ss.slot.id) { mutableStateOf(false) }
+    val rotation by animateFloatAsState(
+        targetValue = if (open) 180f else 0f,
+        animationSpec = spring(dampingRatio = 0.7f, stiffness = 400f),
+        label = "normchevron"
+    )
+    val summary = when (norm.mode) {
+        1 -> "Normalize kapalı"
+        2 -> "Özel · ${norm.db} dBFS"
+        else -> "Genel · $globalText"
+    }
+    Card(
+        shape = shape,
+        colors = CardDefaults.cardColors(containerColor = container),
+        modifier = modifier.fillMaxWidth()
+    ) {
+        Column(Modifier.animateContentSize()) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .clickable { open = !open }
+                    .padding(horizontal = 20.dp, vertical = 14.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(ss.slot.title, style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    Icons.Default.KeyboardArrowDown,
+                    contentDescription = if (open) "Daralt" else "Genişlet",
+                    modifier = Modifier.graphicsLayer { rotationZ = rotation }
+                )
+            }
+            AnimatedVisibility(visible = open) {
+                Column(
+                    Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Genel", "Kapalı", "Özel").forEachIndexed { i, t ->
+                            FilterChip(
+                                selected = norm.mode == i,
+                                onClick = { onChange(i, norm.db) },
+                                label = { Text(t) },
+                                shape = CircleShape
+                            )
+                        }
+                    }
+                    if (norm.mode == 2) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(
+                                "${norm.db} dBFS (ortalama)",
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.weight(1f)
+                            )
+                            FilledTonalIconButton(onClick = { onChange(2, norm.db - 1) }) {
+                                Text("−", style = MaterialTheme.typography.titleLarge)
+                            }
+                            Spacer(Modifier.width(8.dp))
+                            FilledTonalIconButton(onClick = { onChange(2, norm.db + 1) }) {
+                                Text("+", style = MaterialTheme.typography.titleLarge)
+                            }
+                        }
+                    }
+                    FilledTonalButton(
+                        onClick = onApply,
+                        enabled = enabled,
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("Bu sese uygula") }
+                }
+            }
+        }
+    }
+}
+
+// ------------------------------------------------------------------------------------------
+// Ayarlar sekmesi: durum, görünüm, araçlar
+// ------------------------------------------------------------------------------------------
+
+@Composable
+private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, onRestartClick: () -> Unit) {
     val container = MaterialTheme.colorScheme.surfaceContainerHigh
 
     LazyColumn(
@@ -667,112 +958,27 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
             }
         }
 
-        // ---- Sistem ses durumu ----
-        item { GroupHeader("Sistem ses anahtarları") }
-        item {
-            val s = state.sys
-            val ringerOk = s.ringer == "Normal" && !s.systemMuted
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(1, listState)) {
-                SettingsCard(segmentShape(0, 2), container) {
-                    Text("Android'in kendi ses ayarları", style = MaterialTheme.typography.titleMedium)
-                    Text(
-                        "Bunlardan biri kapalıysa ilgili sesler, senin seçtiklerin dahil, hiç çalmaz. " +
-                            "Anahtarlar doğrudan sistem ayarını değiştirir; Ayarlar → Ses bölümündekilerle aynıdır.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    SwitchRow("Dokunma sesleri", "Klavye tuşları ve ekran dokunma sesleri", s.touchSounds, true) {
-                        a.setSystemToggle(SysToggle.TOUCH, it)
-                    }
-                    SwitchRow("Kilit ekranı sesleri", "Kilitleme, kilit açma ve güvenilir cihaz sesleri", s.lockSounds, true) {
-                        a.setSystemToggle(SysToggle.LOCK, it)
-                    }
-                    SwitchRow("Şarj sesleri", "Şarj kablosu takılınca çalan ses", s.chargingSounds, true) {
-                        a.setSystemToggle(SysToggle.CHARGING, it)
-                    }
-                }
-                SettingsCard(segmentShape(1, 2), container) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Icon(
-                            if (ringerOk) Icons.Default.Check else Icons.Default.Warning, null,
-                            tint = if (ringerOk) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error
-                        )
-                        Spacer(Modifier.width(10.dp))
-                        Column {
-                            Text("Şu an telefon: ${s.ringer} modda", style = MaterialTheme.typography.titleSmall)
-                            Text(
-                                "Sistem ses seviyesi ${s.systemVol}/${s.systemMax}" + if (s.systemMuted) " (kapalı)" else "",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                    }
-                    Text(
-                        if (ringerOk) "Sesler çalabilir durumda."
-                        else "Telefon sessiz ya da titreşimdeyken, ya da sistem sesi kapalıyken kilit ve dokunma sesleri çalmaz. " +
-                            "Zil modunu ya da ses seviyesini aç.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-            }
-        }
-
-        // ---- Ses işleme ----
-        item { GroupHeader("Ses işleme") }
-        item {
-            Column(modifier = Modifier.staggerIn(2, listState)) {
-                SettingsCard(segmentShape(0, 1), container) {
-                    SwitchRow(
-                        "Seviyeyi normalize et",
-                        "Seçtiğin sesler ortak bir ortalama seviyeye getirilir (tepeler yumuşak sınırlanır)",
-                        state.normalize, true, a.setNormalize
-                    )
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) {
-                            Text("Hedef seviye", style = MaterialTheme.typography.bodyLarge)
-                            Text(
-                                "${state.targetDb} dBFS (ortalama)",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        FilledTonalIconButton(
-                            onClick = { a.setTargetDb(state.targetDb - 1) }, enabled = state.normalize
-                        ) { Text("−", style = MaterialTheme.typography.titleLarge) }
-                        Spacer(Modifier.width(8.dp))
-                        FilledTonalIconButton(
-                            onClick = { a.setTargetDb(state.targetDb + 1) }, enabled = state.normalize
-                        ) { Text("+", style = MaterialTheme.typography.titleLarge) }
-                    }
-                    Text(
-                        "Ayar yalnızca bundan sonra seçtiklerine uygulanır. Mevcut sesleri güncellemek için:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    FilledTonalButton(
-                        onClick = a.reapplyAll,
-                        enabled = state.root == RootState.GRANTED,
-                        modifier = Modifier.fillMaxWidth()
-                    ) { Text("Seçili sesleri yeniden işle") }
-                }
-            }
-        }
-
         // ---- Görünüm ----
         item { GroupHeader("Görünüm") }
         item {
             val dynamicOk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(3, listState)) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(1, listState)) {
                 SettingsCard(segmentShape(0, 3), container) {
                     Text("Tema", style = MaterialTheme.typography.titleMedium)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Sistemi izle", "Açık", "Koyu").forEachIndexed { i, t ->
-                            FilterChip(
-                                selected = state.themeMode == i,
-                                onClick = { a.setThemeMode(i) },
-                                label = { Text(t) },
-                                shape = CircleShape
-                            )
+                    val modes = listOf("Sistemi izle", "Açık", "Koyu", "OLED (saf siyah)")
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        for (row in 0..1) {
+                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                for (col in 0..1) {
+                                    val i = row * 2 + col
+                                    FilterChip(
+                                        selected = state.themeMode == i,
+                                        onClick = { a.setThemeMode(i) },
+                                        label = { Text(modes[i]) },
+                                        shape = CircleShape
+                                    )
+                                }
+                            }
                         }
                     }
                 }
@@ -812,40 +1018,26 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
             }
         }
 
-        // ---- Gelişmiş ----
-        item { GroupHeader("Gelişmiş") }
+        // ---- Araçlar ----
+        item { GroupHeader("Araçlar") }
         item {
-            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(4, listState)) {
-                SettingsCard(segmentShape(0, 3), container) {
-                    SwitchRow(
-                        "Kilit seslerini zorla çal",
-                        "Kilitleme, kilit açma ve güvenilir cihaz seslerini SoundMod medya ses seviyesiyle çalar; " +
-                            "telefon sessiz ya da titreşimdeyken de duyulur.",
-                        state.forceLock, state.root == RootState.GRANTED, a.setForceLock
-                    )
-                    Text(
-                        "Kapalıyken (varsayılan) Android'in kendi mekanizması kullanılır ve hiçbir şeye dokunulmaz. " +
-                            "Açıkken Sistem Arayüzüne bir kanca eklenir; ses SoundPool ile (stok kilit sesinin de " +
-                            "kullandığı motor) çalınır. “Kilit ekranı sesleri” anahtarı kapalıysa yine çalmaz.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                SettingsCard(segmentShape(1, 3), container) {
+            Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(2, listState)) {
+                SettingsCard(segmentShape(0, 2), container) {
                     Text("Sistem Arayüzü", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Modülü yeni etkinleştirdiysen ya da bir şey takılırsa Sistem Arayüzünü yenileyebilirsin. " +
-                            "Ekran birkaç saniye yeniden çizilir; açık uygulamalar kapanmaz. Hiçbir ses ayarı bunu kendiliğinden yapmaz.",
+                        "Modülü yeni etkinleştirdiysen ya da bir şey takılırsa Sistem Arayüzünü yenileyebilirsin " +
+                            "(sağ üstteki düğmeyle de aynısı yapılır). Ekran birkaç saniye yeniden çizilir; açık " +
+                            "uygulamalar kapanmaz. Hiçbir ses ayarı bunu kendiliğinden yapmaz.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     OutlinedButton(
-                        onClick = { confirmRestart = true },
+                        onClick = onRestartClick,
                         enabled = state.root == RootState.GRANTED,
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Sistem Arayüzünü yenile") }
                 }
-                SettingsCard(segmentShape(2, 3), container) {
+                SettingsCard(segmentShape(1, 2), container) {
                     Text("Tanılama", style = MaterialTheme.typography.titleMedium)
                     Text(
                         "Dosya izinleri, ayarlar, hook durumu, son SystemUI olayı ve SELinux reddlerini tek raporda toplar.",
@@ -871,31 +1063,12 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState) 
 
         item {
             Text(
-                "SoundMod 0.5.0",
+                "SoundMod 0.6.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
             )
         }
-    }
-
-    if (confirmRestart) {
-        AlertDialog(
-            onDismissRequest = { confirmRestart = false },
-            title = { Text("Sistem Arayüzü yenilensin mi?") },
-            text = {
-                Text(
-                    "Durum çubuğu, bildirim paneli ve kilit ekranı birkaç saniye yeniden başlatılır; ekran kısa süre " +
-                        "titreyebilir. Açık uygulamalar ve verilerin etkilenmez."
-                )
-            },
-            confirmButton = {
-                TextButton(onClick = { confirmRestart = false; a.restartSysUiNow() }) { Text("Yenile") }
-            },
-            dismissButton = {
-                TextButton(onClick = { confirmRestart = false }) { Text("Vazgeç") }
-            }
-        )
     }
 }
 
@@ -1099,9 +1272,15 @@ private fun ReportSheet(text: String, onDismiss: () -> Unit) {
 /** Ses süresi boyunca saniye saniye ilerleyen dalgalı çubuk; dalga baştan sona görünür. */
 @Composable
 private fun PlayProgress(player: State<PlayerUi>, modifier: Modifier = Modifier) {
+    // Çok kısa seslerde de çubuğun ilerleyişi görünsün diye değer yumuşatılır
+    val shown = animateFloatAsState(
+        targetValue = player.value.progress,
+        animationSpec = tween(durationMillis = 140),
+        label = "progress"
+    )
     Column(modifier) {
         LinearWavyProgressIndicator(
-            progress = { player.value.progress },
+            progress = { shown.value },
             amplitude = { 1f },
             modifier = Modifier.fillMaxWidth()
         )
@@ -1180,5 +1359,36 @@ private fun RestartPromptDialog(p: RestartPrompt, onConfirm: () -> Unit, onDismi
         text = { Text(p.text) },
         confirmButton = { TextButton(onClick = onConfirm) { Text("Yenile") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Sonra") } }
+    )
+}
+
+
+@Composable
+private fun RestartConfirmDialog(onConfirm: (Boolean) -> Unit, onDismiss: () -> Unit) {
+    var dontShowAgain by remember { mutableStateOf(false) }
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("Sistem Arayüzü yenilensin mi?") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                Text(
+                    "Durum çubuğu, bildirim paneli ve kilit ekranı birkaç saniye yeniden başlatılır; ekran kısa süre " +
+                        "titreyebilir. Açık uygulamalar ve verilerin etkilenmez. Modülü yeni etkinleştirdiysen ya da " +
+                        "bir ses çalmıyorsa işe yarar."
+                )
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(MaterialTheme.shapes.medium)
+                        .clickable { dontShowAgain = !dontShowAgain },
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Checkbox(checked = dontShowAgain, onCheckedChange = { dontShowAgain = it })
+                    Text("Bir daha gösterme", style = MaterialTheme.typography.bodyMedium)
+                }
+            }
+        },
+        confirmButton = { TextButton(onClick = { onConfirm(dontShowAgain) }) { Text("Yenile") } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } }
     )
 }

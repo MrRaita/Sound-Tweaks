@@ -85,7 +85,11 @@ class MainActivity : ComponentActivity() {
                     setDebugLog = vm::setDebugLog,
                     setForceLock = vm::setForceLock,
                     confirmRestartPrompt = vm::confirmRestartPrompt,
-                    dismissRestartPrompt = vm::dismissRestartPrompt
+                    dismissRestartPrompt = vm::dismissRestartPrompt,
+                    applySilent = vm::applySilent,
+                    setSlotNorm = vm::setSlotNorm,
+                    reapplySlot = vm::reapplySlot,
+                    setSkipRestartWarning = vm::setSkipRestartWarning
                 )
             }
 

@@ -19,6 +19,16 @@ Hedef: Nothing Phone (4a) · Nothing OS 4.1 · Android 16 (diğer AOSP tabanlı 
   istenirse ortak seviyeye normalize edilir (ffmpeg gerekmez).
 * Orijinal dosyalara dokunulmaz; "Varsayılana dön" ya da modülü kapatmak her şeyi eski haline getirir.
 
+## Arayüz
+
+* **Sesler:** her ses için sistem sesinden / kendi dosyandan seç, sustur ya da varsayılana dön.
+* **Kütüphane:** bulunan sistem seslerini dinle (çal/duraklat, ilerleme çubuğu).
+* **Gelişmiş:** sistem ses anahtarları (dokunma, kilit ekranı, şarj sesleri; zil modu ve ses seviyeleri), ses işleme
+  (genel normalize + ses başına ayrı normalize), kilit seslerini zorla çal.
+* **Ayarlar:** durum kartları (Root, Vector, SELinux modülü), tema (sistem/açık/koyu/OLED), renkler ve paletler,
+  Sistem Arayüzü yenileme, tanılama.
+* Sağ üstteki düğme Sistem Arayüzünü yeniden başlatır; ilk basışta uyarır, "Bir daha gösterme" ile uyarı kapatılabilir.
+
 ## Tasarım ilkeleri
 
 1. Material Design, modern ve akıcı arayüz.

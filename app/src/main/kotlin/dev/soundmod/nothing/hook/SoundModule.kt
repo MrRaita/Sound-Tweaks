@@ -1,9 +1,13 @@
 package dev.soundmod.nothing.hook
 
 import android.app.Application
+import android.content.Context
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.SoundPool
+import android.os.Handler
+import android.os.Looper
 import android.provider.Settings
 import android.util.Log
 import dev.soundmod.nothing.core.SoundPaths
@@ -166,25 +170,45 @@ class SoundModule : XposedModule() {
             hooked += "playTrustedSound"
         }
 
-        // İlk olayda gecikme olmasın diye mevcut sesleri önceden yükle
-        for (key in listOf("lock_sound", "unlock_sound", "trusted_sound")) {
-            FilesIdx.find(key)?.let { ForcePlayer.preload(it) }
-        }
+        // SoundPool, uygulama bağlamı (kimlik/paket bilgisi) hazır olmadan kurulursa ses çıkmayabilir;
+        // bu yüzden havuz erken değil, Sistem Arayüzü açıldıktan sonra kurulur ve sesler önden yüklenir.
+        preloadLater(0)
         return "zorla çalma: ${hooked.joinToString("+")}"
     }
 
-    /** @return true = çağrıyı biz karşıladık (stok çalma atlanır); false = stok davranış sürsün */
+    private fun preloadLater(tries: Int) {
+        Handler(Looper.getMainLooper()).postDelayed({
+            if (currentApp() != null) {
+                for (key in listOf("lock_sound", "unlock_sound", "trusted_sound")) {
+                    FilesIdx.find(key)?.let { ForcePlayer.preload(it) }
+                }
+            } else if (tries < 5) {
+                preloadLater(tries + 1)
+            }
+        }, 4000)
+    }
+
+    /**
+     * @return true = çağrıyı biz karşıladık ve ses gerçekten çalmaya başladı (stok çalma atlanır);
+     *         false = stok davranış sürsün. Biz çalamıyorsak (henüz yüklenmedi, hata, medya sesi 0...)
+     *         sessiz kalmamak için her zaman stok mekanizmaya bırakırız.
+     */
     private fun forcePlay(key: String, kind: String): Boolean {
         return try {
             if (!File(SoundPaths.FORCE_FLAG).exists()) return false // mod kapatıldı: stok davranış
             val path = FilesIdx.find(key) ?: return false
-            val app = currentApp()
-            val lockSoundsOn = app == null ||
-                Settings.System.getInt(app.contentResolver, "lockscreen_sounds_enabled", 1) != 0
-            if (!lockSoundsOn) return false // kullanıcı kilit seslerini kapattı: stok davranış (çalmaz)
+            val app = currentApp() ?: return false
+            if (Settings.System.getInt(app.contentResolver, "lockscreen_sounds_enabled", 1) == 0) {
+                return false // kullanıcı kilit seslerini kapattı: stok davranış (çalmaz)
+            }
+            val am = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+            if (am.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) return false // medya sesi kapalı: duyulmaz
             val ok = ForcePlayer.play(path)
             if (File(SoundPaths.DEBUG_FLAG).exists()) {
-                putGlobal(SoundPaths.SYSUI_LAST_KEY, "$kind: ${if (ok) "SoundPool ile çalındı" else "çalınamadı"} (${System.currentTimeMillis()})")
+                putGlobal(
+                    SoundPaths.SYSUI_LAST_KEY,
+                    "$kind: ${if (ok) "SoundPool çalındı" else "stok davranışa düşüldü"} [${ForcePlayer.lastInfo}] (${System.currentTimeMillis()})"
+                )
             }
             ok
         } catch (t: Throwable) {
@@ -306,14 +330,16 @@ private val FilesIdx = DirIndex(SoundPaths.FILES_DIR)
 
 /**
  * "Zorla çal" modu için tek bir SoundPool (stok kilit sesinin de kullandığı motor), medya ses akışı.
- * Ses dosyaları yüklenip bellekte tutulur; olayda anında çalar. Dosya değişirse yeniden yüklenir.
+ * Sesler yüklenip bellekte tutulur; olayda anında çalar. Dosya değişirse yeniden yüklenir.
  */
 private object ForcePlayer {
-    private class Entry(val id: Int, val stamp: Long, var loaded: Boolean)
+    private class Entry(val id: Int, val stamp: Long, var loaded: Boolean, var status: Int = -1)
 
     private var pool: SoundPool? = null
     private val entries = HashMap<String, Entry>()
-    private var pendingPlayId = 0
+
+    /** Tanılama: son yükleme/çalma sonucu */
+    @Volatile var lastInfo: String = "-"
 
     private fun ensurePool(): SoundPool {
         pool?.let { return it }
@@ -326,16 +352,14 @@ private object ForcePlayer {
                     .build()
             )
             .build()
-        p.setOnLoadCompleteListener { sp, id, status ->
+        p.setOnLoadCompleteListener { _, id, status ->
             synchronized(this) {
                 val e = entries.values.firstOrNull { it.id == id }
-                if (status == 0 && e != null) {
-                    e.loaded = true
-                    if (pendingPlayId == id) {
-                        pendingPlayId = 0
-                        sp.play(id, 1f, 1f, 1, 0, 1f)
-                    }
+                if (e != null) {
+                    e.status = status
+                    e.loaded = status == 0
                 }
+                lastInfo = "yükleme=$status"
             }
         }
         pool = p
@@ -344,27 +368,29 @@ private object ForcePlayer {
 
     @Synchronized
     fun preload(path: String) {
-        load(path, playWhenLoaded = false)
+        ensureLoaded(path)
     }
 
+    /** Yüklü değilse yükletir ve false döner (bu olayda stok çalsın, sonrakinde biz çalarız). */
     @Synchronized
-    fun play(path: String): Boolean = load(path, playWhenLoaded = true)
+    fun play(path: String): Boolean {
+        val e = ensureLoaded(path) ?: return false
+        if (!e.loaded) return false
+        val stream = ensurePool().play(e.id, 1f, 1f, 1, 0, 1f)
+        lastInfo = "akış=$stream"
+        return stream != 0
+    }
 
-    private fun load(path: String, playWhenLoaded: Boolean): Boolean {
+    private fun ensureLoaded(path: String): Entry? {
         val p = ensurePool()
         val stamp = File(path).lastModified()
         val cur = entries[path]
-        if (cur != null && cur.stamp == stamp) {
-            if (playWhenLoaded) {
-                if (cur.loaded) p.play(cur.id, 1f, 1f, 1, 0, 1f) else pendingPlayId = cur.id
-            }
-            return true
-        }
+        if (cur != null && cur.stamp == stamp) return cur
         if (cur != null) p.unload(cur.id)
         val id = p.load(path, 1)
-        if (id == 0) return false
-        entries[path] = Entry(id, stamp, false)
-        if (playWhenLoaded) pendingPlayId = id
-        return true
+        if (id == 0) return null
+        val e = Entry(id, stamp, false)
+        entries[path] = e
+        return e
     }
 }

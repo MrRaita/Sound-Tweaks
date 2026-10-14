@@ -143,6 +143,11 @@ object AudioConverter {
         return stats
     }
 
+    /** Belirli bir sesi susturmak için kısa bir sessiz WAV üretir. */
+    fun writeSilence(out: File, ms: Int = 80) {
+        writeWav(out, ShortArray(44100 * ms / 1000), 44100, 1)
+    }
+
     private fun meanDb(s: ShortArray): Double {
         var sumSq = 0.0
         for (v in s) {

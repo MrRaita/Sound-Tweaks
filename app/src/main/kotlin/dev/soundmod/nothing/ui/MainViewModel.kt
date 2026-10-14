@@ -56,8 +56,13 @@ data class SysState(
     val ringer: String = "",
     val systemMuted: Boolean = false,
     val systemVol: Int = 0,
-    val systemMax: Int = 0
+    val systemMax: Int = 0,
+    val mediaVol: Int = 0,
+    val mediaMax: Int = 0
 )
+
+/** Ses başına normalize seçimi: mode 0 = genel ayar, 1 = kapalı, 2 = özel hedef (db) */
+data class SlotNorm(val mode: Int = 0, val db: Int = -30)
 
 data class UiState(
     val root: RootState = RootState.UNKNOWN,
@@ -79,7 +84,9 @@ data class UiState(
     val debugLog: Boolean = false,
     val showIntro: Boolean = false,
     val forceLock: Boolean = false,
-    val restartPrompt: RestartPrompt? = null
+    val restartPrompt: RestartPrompt? = null,
+    val skipRestartWarning: Boolean = false,
+    val slotNorm: Map<String, SlotNorm> = emptyMap()
 )
 
 /** Kullanıcıya sorulan Sistem Arayüzü yenileme önerisi */
@@ -107,7 +114,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             dynamicColor = prefs.getBoolean("dynamic", true),
             palette = prefs.getInt("palette", 0),
             sys = readSys(),
-            showIntro = !prefs.getBoolean("intro_seen", false)
+            showIntro = !prefs.getBoolean("intro_seen", false),
+            skipRestartWarning = prefs.getBoolean("skip_restart_warning", false),
+            slotNorm = readNorms()
         )
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -180,7 +189,42 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun readSlots() = SoundCatalog.slots.map { SlotState(it, repo.label(it)) }
     private fun msg(s: String) { _messages.tryEmit(s) }
     private fun app() = getApplication<Application>()
-    private fun opts() = _state.value.let { AudioConverter.Options(it.normalize, it.targetDb) }
+    private fun readNorms(): Map<String, SlotNorm> {
+        val globalDb = prefs.getInt("target_db", -30)
+        return SoundCatalog.slots.associate { sl ->
+            val v = prefs.getString("norm_${sl.id}", "g") ?: "g"
+            sl.id to when {
+                v == "g" -> SlotNorm(0, globalDb)
+                v == "off" -> SlotNorm(1, globalDb)
+                else -> SlotNorm(2, v.toIntOrNull() ?: globalDb)
+            }
+        }
+    }
+
+    /** Bir yuva için geçerli ses işleme seçenekleri: önce ses başına seçim, yoksa genel ayar */
+    private fun optsFor(slot: SoundSlot): AudioConverter.Options {
+        val st = _state.value
+        val n = st.slotNorm[slot.id] ?: SlotNorm(0, st.targetDb)
+        return when (n.mode) {
+            1 -> AudioConverter.Options(false, st.targetDb)
+            2 -> AudioConverter.Options(true, n.db)
+            else -> AudioConverter.Options(st.normalize, st.targetDb)
+        }
+    }
+
+    fun setSlotNorm(slotId: String, mode: Int, db: Int) {
+        val c = db.coerceIn(-45, -10)
+        prefs.edit().putString(
+            "norm_$slotId",
+            when (mode) { 1 -> "off"; 2 -> c.toString(); else -> "g" }
+        ).apply()
+        _state.update { it.copy(slotNorm = it.slotNorm + (slotId to SlotNorm(mode, c))) }
+    }
+
+    fun setSkipRestartWarning(v: Boolean) {
+        prefs.edit().putBoolean("skip_restart_warning", v).apply()
+        _state.update { it.copy(skipRestartWarning = v) }
+    }
 
     // ---- Genel durum ----
 
@@ -221,7 +265,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 },
                 systemMuted = am.isStreamMute(AudioManager.STREAM_SYSTEM),
                 systemVol = am.getStreamVolume(AudioManager.STREAM_SYSTEM),
-                systemMax = am.getStreamMaxVolume(AudioManager.STREAM_SYSTEM)
+                systemMax = am.getStreamMaxVolume(AudioManager.STREAM_SYSTEM),
+                mediaVol = am.getStreamVolume(AudioManager.STREAM_MUSIC),
+                mediaMax = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
             )
         } catch (e: Exception) {
             SysState()
@@ -300,7 +346,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     // ---- Ses değiştirme ----
 
     fun applySystem(slot: SoundSlot, sound: SystemSound) = work {
-        repo.applySystem(slot, sound, opts()).fold(
+        repo.applySystem(slot, sound, optsFor(slot)).fold(
             onSuccess = { afterChange(slot, "“${slot.title}” → ${sound.name}", it) },
             onFailure = { msg("Hata: ${it.message}") }
         )
@@ -308,8 +354,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun applyCustom(slot: SoundSlot, uri: Uri) = work {
         val name = displayName(uri)
-        repo.applyCustom(slot, uri, name, opts()).fold(
+        repo.applyCustom(slot, uri, name, optsFor(slot)).fold(
             onSuccess = { afterChange(slot, "“${slot.title}” → $name", it) },
+            onFailure = { msg("Hata: ${it.message}") }
+        )
+    }
+
+    /** Seçilen sesi susturur (kısa sessiz dosya). */
+    fun applySilent(slot: SoundSlot) = work {
+        repo.applySilence(slot).fold(
+            onSuccess = { afterChange(slot, "“${slot.title}” susturuldu", it) },
+            onFailure = { msg("Hata: ${it.message}") }
+        )
+    }
+
+    /** Tek bir sesi, kendi normalize seçimiyle yeniden işler. */
+    fun reapplySlot(slot: SoundSlot) = work {
+        repo.reprocess(slot, optsFor(slot)).fold(
+            onSuccess = { afterChange(slot, "“${slot.title}” yeniden işlendi", it) },
             onFailure = { msg("Hata: ${it.message}") }
         )
     }
@@ -330,7 +392,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         var last: ApplyInfo? = null
         for (ss in readSlots()) {
             if (!repo.hasSource(ss.slot)) continue
-            repo.reprocess(ss.slot, opts()).fold(
+            repo.reprocess(ss.slot, optsFor(ss.slot)).fold(
                 onSuccess = {
                     ok++
                     last = it
@@ -448,7 +510,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 _player.value = PlayerUi(key, true, 0f, 0, runCatching { it.duration }.getOrDefault(0))
                 startTicker()
             }
-            np.setOnCompletionListener { release() }
+            np.setOnCompletionListener { finishPlayback(key) }
             np.setOnErrorListener { _, _, _ ->
                 release()
                 msg("Çalınamadı")
@@ -477,11 +539,32 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    private var hideJob: Job? = null
+
     private fun release() {
         ticker?.cancel()
+        hideJob?.cancel()
         mp?.let { runCatching { it.release() } }
         mp = null
         _player.value = PlayerUi()
+    }
+
+    /**
+     * Çalma bitince oynatıcıyı bırakır ama ilerleme çubuğu dolu ve dalgalı hâlde bir süre görünür kalır;
+     * böylece çok kısa seslerde de çubuk ve dalga efekti fark edilir.
+     */
+    private fun finishPlayback(key: String) {
+        ticker?.cancel()
+        val cur = _player.value
+        mp?.let { runCatching { it.release() } }
+        mp = null
+        if (cur.key != key) return
+        _player.value = cur.copy(playing = false, progress = 1f, positionMs = cur.durationMs)
+        hideJob?.cancel()
+        hideJob = viewModelScope.launch(Dispatchers.Main) {
+            delay(1600)
+            if (_player.value.key == key && !_player.value.playing) _player.value = PlayerUi()
+        }
     }
 
     /** Sistem ses efektini sistem yoluyla çalar (dokunma sesleri açıksa duyulur). */
