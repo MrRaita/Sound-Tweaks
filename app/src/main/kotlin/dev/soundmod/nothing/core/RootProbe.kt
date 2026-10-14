@@ -16,7 +16,6 @@ data class Probe(
     val granted: Boolean,
     val info: RootInfo,
     val hookStatus: String?,
-    val moduleInstalled: Boolean,
     val debugLog: Boolean,
     val forceLock: Boolean
 )
@@ -26,7 +25,6 @@ data class Probe(
  * açmak hem yavaş hem gereksiz iş). Aynı çağrı ses deposunu da hazırlar.
  */
 object RootProbe {
-    private const val MODULE_ID = "soundmod-selinux"
 
     fun run(): Probe {
         val b = Root.q(SoundPaths.BASE)
@@ -46,7 +44,6 @@ object RootProbe {
             echo "apd=${'$'}(/data/adb/ap/bin/apd --version 2>/dev/null)"
             echo "suv=${'$'}(su -v 2>/dev/null)"
             echo "lkm=${'$'}(grep -c -i kernelsu /proc/modules 2>/dev/null)"
-            echo "module=${'$'}([ -d /data/adb/modules/$MODULE_ID ] && echo yes)"
             echo "debug=${'$'}([ -e ${Root.q(SoundPaths.DEBUG_FLAG)} ] && echo yes)"
             echo "force=${'$'}([ -e ${Root.q(SoundPaths.FORCE_FLAG)} ] && echo yes)"
             echo "sys=${'$'}(cat ${SoundPaths.STATUS_SYSTEM} 2>/dev/null)"
@@ -60,7 +57,7 @@ object RootProbe {
             if (i > 0) kv[line.substring(0, i)] = line.substring(i + 1).trim()
         }
         val granted = kv["uid"] == "0"
-        if (!granted) return Probe(false, RootInfo(), null, false, false, false)
+        if (!granted) return Probe(false, RootInfo(), null, false, false)
 
         val ksud = kv["ksud"].orEmpty()
         val magisk = kv["magisk"].orEmpty()
@@ -92,6 +89,6 @@ object RootProbe {
             kv["sys"]?.takeIf { it.isNotBlank() },
             kv["sysui"]?.takeIf { it.isNotBlank() && it != "null" }
         ).takeIf { it.isNotEmpty() }?.joinToString("\n")
-        return Probe(true, info, hook, kv["module"] == "yes", kv["debug"] == "yes", kv["force"] == "yes")
+        return Probe(true, info, hook, kv["debug"] == "yes", kv["force"] == "yes")
     }
 }

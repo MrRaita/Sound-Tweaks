@@ -76,8 +76,6 @@ class MainActivity : ComponentActivity() {
                     setPalette = vm::setPalette,
                     restartSysUiNow = vm::restartSysUiNow,
                     setSystemToggle = vm::setSystemToggle,
-                    installModule = vm::installModule,
-                    reboot = vm::reboot,
                     buildReport = vm::buildReport,
                     clearReport = vm::clearReport,
                     dismissIntro = vm::dismissIntro,
@@ -90,7 +88,7 @@ class MainActivity : ComponentActivity() {
                     setSlotNorm = vm::setSlotNorm,
                     reapplySlot = vm::reapplySlot,
                     setSkipRestartWarning = vm::setSkipRestartWarning,
-                    moveTab = vm::moveTab,
+                    moveTabTo = vm::moveTabTo,
                     setTabHidden = vm::setTabHidden
                 )
             }

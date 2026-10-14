@@ -21,8 +21,12 @@ import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -51,6 +55,7 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -105,12 +110,18 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlin.math.roundToInt
 import dev.soundmod.nothing.core.RootInfo
 import dev.soundmod.nothing.core.SoundCatalog
 import dev.soundmod.nothing.core.SoundSlot
@@ -137,8 +148,6 @@ data class UiActions(
     val setPalette: (Int) -> Unit,
     val restartSysUiNow: () -> Unit,
     val setSystemToggle: (SysToggle, Boolean) -> Unit,
-    val installModule: () -> Unit,
-    val reboot: () -> Unit,
     val buildReport: () -> Unit,
     val clearReport: () -> Unit,
     val dismissIntro: () -> Unit,
@@ -151,7 +160,7 @@ data class UiActions(
     val setSlotNorm: (String, Int, Int) -> Unit,
     val reapplySlot: (SoundSlot) -> Unit,
     val setSkipRestartWarning: (Boolean) -> Unit,
-    val moveTab: (Int, Int) -> Unit,
+    val moveTabTo: (Int, Int) -> Unit,
     val setTabHidden: (Int, Boolean) -> Unit
 )
 
@@ -496,7 +505,11 @@ private fun SlotRow(
             }
             PlayPauseButton(playing = playing, onClick = onPlay)
         }
-        AnimatedVisibility(visible = active) {
+        AnimatedVisibility(
+            visible = active,
+            enter = fadeIn(tween(120)) + expandVertically(tween(160)),
+            exit = fadeOut(tween(120)) + shrinkVertically(tween(160))
+        ) {
             PlayProgress(player, Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp))
         }
     }
@@ -654,7 +667,11 @@ private fun SoundRow(
                     FilledTonalIconButton(onClick = onPick) { Icon(Icons.Default.Check, "Seç") }
                 }
             }
-            AnimatedVisibility(visible = active) {
+            AnimatedVisibility(
+                visible = active,
+                enter = fadeIn(tween(120)) + expandVertically(tween(160)),
+                exit = fadeOut(tween(120)) + shrinkVertically(tween(160))
+            ) {
                 PlayProgress(player, Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp))
             }
         }
@@ -941,7 +958,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
             val info = state.rootInfo
             Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(0, listState)) {
                 StatusCard(
-                    shape = segmentShape(0, 3), container = container,
+                    shape = segmentShape(0, 2), container = container,
                     title = "Root", ok = state.root == RootState.GRANTED,
                     summary = when (state.root) {
                         RootState.GRANTED -> "Aktif · ${info.manager}" +
@@ -957,28 +974,13 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                     details = rootDetails(info)
                 ) { OutlinedButton(onClick = a.refresh) { Text("Yeniden kontrol et") } }
                 StatusCard(
-                    shape = segmentShape(1, 3), container = container,
+                    shape = segmentShape(1, 2), container = container,
                     title = "Vector modülü", ok = state.hookStatus != null,
                     summary = hookSummary(state.hookStatus),
                     text = state.hookStatus
                         ?: "Hook henüz çalışmamış. Vector'da SoundMod'u etkinleştir, kapsamda " +
                         "“Sistem Çerçevesi” ve “Sistem Arayüzü”nü seç, sonra yeniden başlat."
                 ) {}
-                StatusCard(
-                    shape = segmentShape(2, 3), container = container,
-                    title = "SELinux yardımcı modülü (isteğe bağlı)", ok = state.moduleInstalled,
-                    summary = if (state.moduleInstalled) "Kurulu" else "Kurulu değil",
-                    text = if (state.moduleInstalled)
-                        "Kurulu. Açılışta ses deposunun SELinux bağlamını onarır."
-                    else "Açılışta ses deposunun bağlamını onarır. Kilit/ekran görüntüsü sesleri özel dosyada çalmazsa kur."
-                ) {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        FilledTonalButton(onClick = a.installModule, enabled = state.root == RootState.GRANTED) {
-                            Text(if (state.moduleInstalled) "Yeniden kur" else "Kur")
-                        }
-                        OutlinedButton(onClick = a.reboot, enabled = state.root == RootState.GRANTED) { Text("Yeniden başlat") }
-                    }
-                }
             }
         }
 
@@ -1038,31 +1040,12 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                 SettingsCard(segmentShape(3, 4), container) {
                     Text("Alt gezinti çubuğu", style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Liste sırası çubuktaki soldan sağa sıradır. Sekmeleri taşıyabilir, istemediklerini gizleyebilirsin. " +
-                            "Ayarlar sekmesi her zaman görünür.",
+                        "Liste sırası çubuktaki soldan sağa sıradır. Soldaki ≡ simgesine basılı tutup sürükleyerek sırayı " +
+                            "değiştir, istemediklerini gizle. Ayarlar sekmesi her zaman görünür.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    val visibleOthers = state.tabOrder.count { it != 3 && it !in state.hiddenTabs }
-                    state.tabOrder.forEachIndexed { index, id ->
-                        val shown = id == 3 || id !in state.hiddenTabs
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(tabIcon(id), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Spacer(Modifier.width(12.dp))
-                            Text(TAB_TITLES[id], style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
-                            IconButton(onClick = { a.moveTab(id, -1) }, enabled = index > 0) {
-                                Icon(Icons.Default.KeyboardArrowUp, "Yukarı taşı")
-                            }
-                            IconButton(onClick = { a.moveTab(id, 1) }, enabled = index < state.tabOrder.lastIndex) {
-                                Icon(Icons.Default.KeyboardArrowDown, "Aşağı taşı")
-                            }
-                            Switch(
-                                checked = shown,
-                                onCheckedChange = { a.setTabHidden(id, !it) },
-                                enabled = id != 3 && !(shown && visibleOthers <= 1)
-                            )
-                        }
-                    }
+                    TabOrderEditor(state, a)
                 }
             }
         }
@@ -1112,7 +1095,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
         item {
             Text(
-                "SoundMod 0.7.0",
+                "SoundMod 0.8.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
@@ -1458,4 +1441,95 @@ private fun RestartConfirmDialog(onConfirm: (Boolean) -> Unit, onDismiss: () -> 
         confirmButton = { TextButton(onClick = { onConfirm(dontShowAgain) }) { Text("Yenile") } },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } }
     )
+}
+
+
+/**
+ * Alt çubuk sekmeleri için sürükle-bırak sıralama. Soldaki ≡ simgesine basılı tutup sürüklenir; diğer satırlar
+ * yer açmak için kayar, bırakınca yeni sıra kaydedilir.
+ */
+@Composable
+private fun TabOrderEditor(state: UiState, a: UiActions) {
+    val haptic = LocalHapticFeedback.current
+    val rowPx = with(LocalDensity.current) { 56.dp.toPx() }
+    var dragging by remember { mutableIntStateOf(-1) }
+    var offset by remember { mutableFloatStateOf(0f) }
+    val order = state.tabOrder
+    val target = if (dragging >= 0) {
+        (dragging + (offset / rowPx).roundToInt()).coerceIn(0, order.lastIndex)
+    } else -1
+    val visibleOthers = order.count { it != 3 && it !in state.hiddenTabs }
+
+    Column(Modifier.fillMaxWidth()) {
+        order.forEachIndexed { index, id ->
+            val isDragged = index == dragging
+            val shift = when {
+                dragging < 0 || isDragged -> 0f
+                dragging < index && index <= target -> -rowPx
+                target <= index && index < dragging -> rowPx
+                else -> 0f
+            }
+            // Bırakınca sıra anında değişir; kayma animasyonu yalnızca sürüklerken çalışır
+            val animShift by animateFloatAsState(
+                targetValue = shift,
+                animationSpec = if (dragging >= 0) spring(dampingRatio = 0.8f, stiffness = 500f) else snap(),
+                label = "tabshift"
+            )
+            val shown = id == 3 || id !in state.hiddenTabs
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .height(56.dp)
+                    .zIndex(if (isDragged) 1f else 0f)
+                    .graphicsLayer {
+                        translationY = if (isDragged) offset else animShift
+                        val sc = if (isDragged) 1.03f else 1f
+                        scaleX = sc
+                        scaleY = sc
+                    },
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Icon(
+                    Icons.Default.Menu,
+                    contentDescription = "Basılı tutup sürükleyerek taşı",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .pointerInput(id, order) {
+                            detectDragGesturesAfterLongPress(
+                                onDragStart = {
+                                    dragging = index
+                                    offset = 0f
+                                    haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                },
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    offset += dragAmount.y
+                                },
+                                onDragEnd = {
+                                    val to = (index + (offset / rowPx).roundToInt()).coerceIn(0, order.lastIndex)
+                                    if (to != index) a.moveTabTo(id, to)
+                                    dragging = -1
+                                    offset = 0f
+                                },
+                                onDragCancel = {
+                                    dragging = -1
+                                    offset = 0f
+                                }
+                            )
+                        }
+                        .padding(10.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Icon(tabIcon(id), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                Spacer(Modifier.width(12.dp))
+                Text(TAB_TITLES[id], style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Switch(
+                    checked = shown,
+                    onCheckedChange = { a.setTabHidden(id, !it) },
+                    enabled = id != 3 && !(shown && visibleOthers <= 1)
+                )
+            }
+        }
+    }
 }

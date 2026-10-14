@@ -1,99 +1,155 @@
 # SoundMod
 
-Sistem seslerini (klavye, dokunma, ekran görüntüsü, kilit, şarj…) istediğin sesle değiştiren
-**LSPosed/Vector modülü + uygulama**. Material 3 Expressive arayüz, root ile çalışır.
+Android sistem seslerini (klavye, dokunma, ekran görüntüsü, kilit ekranı, şarj, dock) değiştirmeye yarayan,
+LSPosed/Vector modülü ve yönetim uygulaması. Arayüz Material 3 Expressive ile yazılmıştır.
 
-Hedef: Nothing Phone (4a) · Nothing OS 4.1 · Android 16 (diğer AOSP tabanlı ROM'lar da denenebilir).
+Sistem dosyaları değiştirilmez. Seçilen sesler ayrı bir depoda tutulur ve ilgili sistem süreçlerinde yalnızca
+ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler sıfırlandığında sistem kendi varsayılanlarına döner.
 
-## Nasıl çalışır?
+## Özellikler
 
-| Ses | Yöntem |
-|---|---|
-| Klavye tuşları, dokunma tıkı | `system_server` içinde `SoundEffectsHelper.getResourceFilePath` hook'u → `/data/system/soundmod/override/<StokAdı>.*` varsa onu döndürür |
-| Ekran görüntüsü | SystemUI içinde `ScreenshotSoundProviderImpl.getScreenshotSound` hook'u |
-| Kilitleme, kilit açma, güvenilir cihaz | Varsayılan: Android'in kendi mekanizması (`Settings.Global` `lock_sound` vb. yolu; sistem Sistem Arayüzü açılırken bir kez yükler). İsteğe bağlı "zorla çal" modunda SystemUI'da `KeyguardViewMediator.playSounds` / `playTrustedSound` yakalanır ve dosya SoundPool ile medya ses seviyesinden çalınır |
-| Düşük pil, şarj, kablosuz şarj, dock, dock'tan çıkarma | Root ile `settings put global <anahtar> <dosya yolu>` (sistem bu yolu çalarken okur) |
+- Sesleri dosya yolundan değil, uygulama içinden seçme: sistem seslerinden, kullanıcının kendi dosyasından ya da
+  susturarak.
+- Sistem ses dizinlerinin taranıp listelendiği, dinlenebilen kütüphane (çal/duraklat, süreye bağlı dalgalı ilerleme çubuğu).
+- Her ses için ayrı normalize ayarı (genel, kapalı ya da özel hedef seviye); tepeler yumuşak limiter ile sınırlanır.
+- Dokunma, kilit ekranı ve şarj sesleri için sistem anahtarlarının durumunu gösterme ve değiştirme (zil modu ile ses
+  seviyeleri dahil).
+- İsteğe bağlı "zorla çal" modu: kilit sesleri sessiz/titreşim modunda da duyulacak şekilde medya ses akışından çalınır.
+- Sistem Arayüzünü yeniden başlatma düğmesi (ilk kullanımda uyarı gösterir, uyarı kapatılabilir).
+- Tema: sistem, açık, koyu, OLED (saf siyah); Material You renkleri ya da 12 hazır palet.
+- Alt gezinti çubuğunda sekme sırasını sürükle-bırak ile değiştirme ve sekmeleri gizleme.
+- Tanılama raporu (dosya izinleri, ayarlar, hook durumu, SELinux reddleri).
 
-* Uygulama `/product/media/audio` (ve diğer bilinen dizinleri) tarar, sesleri listeler, önizletir.
-* Sesi **sistem seslerinden** ya da **kendi dosyandan** seçebilirsin. Kendi dosyaların WAV'a çevrilir,
-  istenirse ortak seviyeye normalize edilir (ffmpeg gerekmez).
-* Orijinal dosyalara dokunulmaz; "Varsayılana dön" ya da modülü kapatmak her şeyi eski haline getirir.
+## Desteklenen sesler
 
-## Arayüz
+| Grup | Sesler | Yöntem |
+|---|---|---|
+| Klavye | Tuş, boşluk, silme, enter, geçersiz tuş | `system_server` hook'u |
+| Dokunma ve ekran | Dokunma tıkı, ekran görüntüsü | `system_server` hook'u, SystemUI hook'u |
+| Kilit ekranı | Kilitleme, kilit açma, güvenilir cihaz | `Settings.Global` yolu (varsayılan), isteğe bağlı SystemUI hook'u |
+| Şarj ve pil | Düşük pil, şarj, kablosuz şarj | `Settings.Global` yolu |
+| Dock | Masa/araç dock'u, dock'tan çıkarma | `Settings.Global` yolu |
 
-* **Sesler:** her ses için sistem sesinden / kendi dosyandan seç, sustur ya da varsayılana dön.
-* **Kütüphane:** bulunan sistem seslerini dinle (çal/duraklat, ilerleme çubuğu).
-* **Gelişmiş:** sistem ses anahtarları (dokunma, kilit ekranı, şarj sesleri; zil modu ve ses seviyeleri), ses işleme
-  (genel normalize + ses başına ayrı normalize), kilit seslerini zorla çal.
-* **Ayarlar:** durum kartları (Root, Vector, SELinux modülü; daralıp açılır), tema (sistem/açık/koyu/OLED), renkler
-  ve paletler, alt çubuktaki sekmelerin sırası ve gizlenmesi (Ayarlar her zaman görünür), Sistem Arayüzü yenileme,
-  tanılama.
-* Sağ üstteki düğme Sistem Arayüzünü yeniden başlatır; ilk basışta uyarır, "Bir daha gösterme" ile uyarı kapatılabilir.
+Kamera, video kaydı, NFC ve ters şarj sesleri `system_server` ya da SystemUI dışındaki süreçlerde çalındığı için
+kapsam dışındadır (bkz. [Bilinen sınırlamalar](#bilinen-sınırlamalar)).
 
-## Tasarım ilkeleri
+## Gereksinimler
 
-1. Material Design, modern ve akıcı arayüz.
-2. Sisteme olabildiğince az müdahale ederek olabildiğince çok ve dengeli değişiklik getirmek.
-3. Arka planda gereksiz kaynak kullanımını olabildiğince az tutmak.
+- Android 9 (API 28) veya üzeri
+- Root (KernelSU, Magisk ya da APatch); ek bir modül gerekmez
+- Vector (LSPosed) 2.1 veya üzeri, libxposed API 101 desteğiyle
 
-Bunun uygulamadaki karşılıkları:
-
-* Uygulamada servis, açılış alıcısı ya da arka plan işi yok; kapalıyken hiçbir şey çalışmaz.
-* Sistem ses dinleyicileri (zil modu, ses seviyesi, ayar gözlemcileri) yalnızca uygulama ekrandayken açıktır.
-* Ses önizlemesinin ilerleme çubuğu oynatıcıyı yoklamaz; başlangıç anından kare kare hesaplanır.
-* Root sorguları açılışta tek `su` çağrısında toplanır; kütüphane taraması ilk gerektiğinde yapılır.
-* Sistem süreçlerindeki hook'lar olay tabanlıdır (yoklama ya da sürekli iş parçacığı yok). Override dizini bellekte
-  önbelleklenir; her olayda yalnızca dizinin değişim zamanına bakılır.
-* Yalnızca ses akışındaki metotlar derlenmiş koddan çıkarılır (deopt); tüm sınıf değil.
-* SystemUI olay kaydı varsayılan olarak kapalıdır (Ayarlar → Gelişmiş → Ayrıntılı olay kaydı).
+Geliştirme ve test ortamı: Nothing Phone (4a), Nothing OS 4.1, Android 16, KernelSU, Vector 2.2.
 
 ## Kurulum
 
-1. Repoyu GitHub'a it → **Actions → Build APK** çalışır → `SoundMod-apk` artifact'ındaki APK'yı kur.
-2. Uygulamayı aç, root iznini ver.
-3. **Vector**'da SoundMod'u etkinleştir, kapsam: **Sistem Çerçevesi** ve **Sistem Arayüzü**. Cihazı yeniden başlat.
-4. Uygulamada Ayarlar sekmesi: "Vector modülü" kartı yeşil olmalı.
-5. Sesler sekmesinden bir kalem seç → sistem sesi / kendi dosyan.
+1. APK, deponun **Releases** sayfasından (ya da **Actions** çıktısından) indirilip kurulur.
+2. Uygulama açılır ve root izni verilir.
+3. Vector yöneticisinde SoundMod etkinleştirilir. Kapsamda **Sistem Çerçevesi** ve **Sistem Arayüzü** seçili olmalıdır.
+4. Cihaz yeniden başlatılır.
+5. Uygulamada **Ayarlar** sekmesindeki Vector kartı kancaların aktif olduğunu göstermelidir.
 
-Not: Klavye/dokunma sesi duymak için *Ayarlar → Ses → Dokunma sesleri* açık olmalı.
+## Kullanım
 
-### SELinux yardımcı modülü (isteğe bağlı)
+- **Sesler:** Bir sese dokunulduğunda sistem seslerinden seçme, kendi dosyasını seçme, susturma ya da varsayılana
+  dönme seçenekleri açılır. Dosyalar çözülüp WAV olarak depoya yazılır.
+- **Kütüphane:** Bulunan sistem sesleri aranır, filtrelenir ve dinlenir.
+- **Gelişmiş:** Sistem ses anahtarları, ses işleme (genel ve ses başına normalize), kilit seslerini zorla çal.
+- **Ayarlar:** Durum kartları, tema ve renkler, alt çubuk düzeni, Sistem Arayüzü yenileme ve tanılama.
 
-Ses deposu (`/data/system/soundmod`) `system_file` SELinux bağlamıyla işaretlenir; böylece SystemUI ve
-system_server dosyaları okuyabilir. Uygulama bunu kendisi yapar. Bağlam açılışta bozulursa Ayarlar sekmesindeki
-**Kur** düğmesi küçük bir KernelSU/Magisk/APatch modülü kurar; modül her açılışta bağlamı yeniden uygular.
+## Nasıl çalışır
 
-### Sesler çalmıyorsa
+### Ses deposu
 
-* Ayarlar → **Sistem ses anahtarları**: dokunma sesleri, kilit ekranı sesleri ve şarj sesleri açık olmalı; zil modu
-  *Normal* ve sistem sesi kapalı olmamalı (titreşim/sessizde kilit ve dokunma sesleri çalmaz).
-* Kilit sesleri varsayılanda stok mekanizmayla çalar: telefon sessiz/titreşimdeyken ya da "Kilit ekranı sesleri"
-  kapalıyken duyulmaz. Ayarlar → Gelişmiş → **Kilit seslerini zorla çal** açılırsa SoundMod sesi medya ses
-  seviyesiyle kendisi çalar (sessiz modda da duyulur); "Kilit ekranı sesleri" kapalıysa yine çalmaz.
-* Sistem Arayüzü kendiliğinden yenilenmez; kilit sesi değişince ya da zorla çalma açılınca yenileme sana sorulur,
-  ayrıca Ayarlar → Gelişmiş'ten onay vererek yenileyebilirsin.
-* Ayarlar → Gelişmiş → **Tanı raporu**: dosya izinleri, ayar değerleri, hook durumu ve SELinux reddlerini gösterir.
+Seçilen sesler root ile `/data/system/soundmod` altına yazılır ve herkesin okuyabildiği `system_file` SELinux
+bağlamıyla işaretlenir.
+
+- `override/<StokAdı>.<uzantı>`: hook'ların yönlendirdiği dosyalar
+- `files/<ayarAnahtarı>.<uzantı>`: `Settings.Global` yollarının gösterdiği dosyalar
+
+Bağlam, uygulama her açıldığında ve her ses yazıldığında yeniden uygulanır. Sistem güncellemesi dosya bağlamlarını
+yeniden yazarsa uygulamanın bir kez açılması yeterlidir.
+
+### Hook'lar
+
+libxposed API 101 ile yazılmıştır (`minApiVersion = targetApiVersion = 101`). Giriş sınıfı
+`dev.soundmod.nothing.hook.SoundModule`, meta veriler `app/src/main/resources/META-INF/xposed/` altındadır.
+
+| Süreç | Sınıf / metot | Amaç |
+|---|---|---|
+| `system_server` | `SoundEffectsHelper.getResourceFilePath` | Klavye ve dokunma sesi yollarını yönlendirir |
+| SystemUI | `ScreenshotSoundProviderImpl.getScreenshotSound` | Ekran görüntüsü sesini değiştirir |
+| SystemUI | `KeyguardViewMediator.playSounds`, `playTrustedSound` | Yalnızca "zorla çal" modunda kilit seslerini çalar |
+
+Her hook ayrı bir `try/catch` içindedir; hata durumunda stok davranış sürer. Kilit sesleri varsayılanda stok
+mekanizmayla çalar: sistem `lock_sound`, `unlock_sound` ve `trusted_sound` ayarlarındaki yolu Sistem Arayüzü açılırken
+bir kez yükler. "Zorla çal" modu kapalıyken SystemUI'a hook eklenmez.
+
+### Ses işleme
+
+Dosyalar `MediaExtractor` ve `MediaCodec` ile çözülür ve 16 bit PCM WAV olarak yazılır. Normalize ölçütü tüm dosyanın
+ortalama (RMS) seviyesidir (ffmpeg `volumedetect` "mean_volume" ile aynı); hedefe ulaşmak için gereken kazanç tepeleri
+taşırıyorsa yumuşak limiter uygulanır.
+
+## Kaynak kullanımı
+
+- Uygulamada servis, açılış alıcısı ya da arka plan işi yoktur.
+- Zil modu ve ses seviyesi dinleyicileri yalnızca uygulama ekrandayken açıktır.
+- Root sorguları açılışta tek `su` çağrısında toplanır; kütüphane ilk gerektiğinde taranır.
+- Hook'lar olay tabanlıdır; yoklama ya da sürekli çalışan iş parçacığı yoktur. Override dizini bellekte tutulur ve
+  yalnızca dizinin değişim zamanı sorgulanır.
+- Yalnızca ses akışındaki metotlar derlenmiş koddan çıkarılır (deopt).
+- Ayrıntılı olay kaydı varsayılan olarak kapalıdır.
+
+## Sorun giderme
+
+- **Sesler çalmıyor:** Gelişmiş sekmesindeki "Sistem ses anahtarları" kartında dokunma, kilit ekranı ve şarj sesleri
+  açık olmalı, zil modu normal olmalıdır. Telefon sessiz ya da titreşimdeyken kilit ve dokunma sesleri çalmaz;
+  kilit sesleri için "zorla çal" modu bunu aşar.
+- **Kilit sesi değişmedi:** Kilit sesleri Sistem Arayüzü açılırken yüklendiği için değişiklikten sonra Sistem Arayüzünün
+  yenilenmesi gerekir (uygulama bunu sorar).
+- **Vector kartı kırmızı:** Modül etkin değil ya da kapsam eksik; kapsam ve yeniden başlatma kontrol edilmelidir.
+- **Tanılama:** Ayarlar → Araçlar → Tanı raporu. "Ayrıntılı olay kaydı" açıkken son SystemUI olayı da rapora yazılır.
 
 ## Derleme
 
-* Yerelde: JDK 17+, `gradle wrapper --gradle-version 9.5.0` (bir kez), sonra `./gradlew assembleRelease`.
-* CI: `.github/workflows/build.yml` wrapper'ı kendisi üretir. `gradle-wrapper.jar` ikili dosya olduğu için repoda yok.
-* Sürüm: `versionName` `app/build.gradle.kts` içinde, `versionCode` CI çalışma numarasından gelir.
-* Normalizasyon ölçütü ffmpeg `volumedetect` "mean_volume" ile aynıdır (varsayılan hedef −30 dBFS); tepeler
-  yumuşak limiter ile sınırlanır, sonuç seviyesi bildirimde gösterilir.
-* Sürüm APK'sı debug anahtarıyla imzalanır (doğrudan kurulabilir).
+Gereksinimler: JDK 17 veya üzeri. Gradle sarmalayıcı jar dosyası ikili olduğu için depoda yer almaz.
 
-## Teknik notlar
+```sh
+gradle wrapper --gradle-version 9.5.0   # bir kez
+./gradlew assembleRelease
+```
 
-* libxposed **API 101** (`minApiVersion=targetApiVersion=101`) → Vector 2.1 ve sonrası.
-* Giriş sınıfı `dev.soundmod.nothing.hook.SoundModule`; meta veriler `src/main/resources/META-INF/xposed/`.
-* system_server hook durumu `/data/system/soundmod_status` dosyasında, SystemUI hook durumu
-  `Settings.Global` `soundmod_sysui_status` anahtarında, SystemUI'ın son olayı `soundmod_sysui_last` anahtarında tutulur.
-* Paket adı geçici: `dev.soundmod.nothing` (değiştirirsen `java_init.list` ve `namespace` da güncellenmeli).
-* Hook'lar `try/catch` içinde; hata olursa stok ses çalar. Durum dosyaları: `/data/system/soundmod/.status_*`.
+Sürüm APK'sı debug anahtarıyla imzalanır. `versionName` `app/build.gradle.kts` içinde, `versionCode` CI çalışma
+numarasından gelir.
 
-## Bilinen belirsizlikler (cihazda doğrulanacak)
+### CI
 
-* `SoundEffectsHelper.Resource.mFileName` alanı ve `getResourceFilePath` imzası Nothing OS 4.1 A16 `services.jar`'da doğrulandı (metot var); çalışma anı davranışı cihazda test edilmeli.
-* Ses efektlerinin yeniden yüklenmesi `AudioManager.unloadSoundEffects/loadSoundEffects` ile yansıma üzerinden yapılır; olmazsa yeniden başlat.
-* SystemUI SELinux erişimi ROM'a göre değişebilir (yardımcı modül bunun için).
+`.github/workflows/build.yml` her `main`/`master` push'unda sarmalayıcıyı üretir, APK'yı derler, `SoundMod-apk`
+çıktısı olarak yükler ve `build-<çalışma numarası>` adlı bir ön sürüm (pre-release) oluşturur.
+
+## Proje yapısı
+
+```
+app/src/main/
+├── kotlin/dev/soundmod/nothing/
+│   ├── MainActivity.kt
+│   ├── core/    # katalog, tarayıcı, dönüştürücü, root, depo
+│   ├── hook/    # libxposed giriş sınıfı ve hook'lar
+│   └── ui/      # Compose ekranları, tema, paletler, ViewModel
+├── resources/META-INF/xposed/   # module.prop, scope.list, java_init.list
+└── res/
+```
+
+## Bilinen sınırlamalar
+
+- Kamera, video kaydı, NFC, ters şarj ve arama bildirim sesleri SoundMod'un kapsamındaki süreçlerde çalınmaz. Bu
+  sesler için ilgili uygulamaların Vector kapsamına alınması ve ses dosyalarının uygulama süreçlerine aktarılması
+  (Vector uzak dosya desteği) gerekir; henüz uygulanmamıştır.
+- Eski kamera API'sinin `cameraserver` içinde yerel kodla çaldığı deklanşör sesi hook'lanamaz.
+- Hook noktaları AOSP sınıf adlarına dayanır; üreticiye özel arayüzlerde sınıf adları farklıysa ilgili hook çalışmaz ve
+  durum kartında hata olarak görünür.
+
+## Lisans
+
+Henüz bir lisans dosyası eklenmemiştir.

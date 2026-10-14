@@ -20,7 +20,6 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import dev.soundmod.nothing.core.ApplyInfo
 import dev.soundmod.nothing.core.AudioConverter
-import dev.soundmod.nothing.core.ModuleInstaller
 import dev.soundmod.nothing.core.Root
 import dev.soundmod.nothing.core.RootInfo
 import dev.soundmod.nothing.core.SoundCatalog
@@ -68,7 +67,6 @@ data class SlotNorm(val mode: Int = 0, val db: Int = -30)
 data class UiState(
     val root: RootState = RootState.UNKNOWN,
     val hookStatus: String? = null,
-    val moduleInstalled: Boolean = false,
     val slots: List<SlotState> = emptyList(),
     val library: List<SystemSound> = emptyList(),
     val libraryLoading: Boolean = false,
@@ -238,13 +236,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         return if (hidden.size >= 3) hidden - hidden.first() else hidden
     }
 
-    /** Sekmeyi sıra içinde bir adım (−1 yukarı/sola, +1 aşağı/sağa) taşır. */
-    fun moveTab(id: Int, delta: Int) {
+    /** Sekmeyi sıradaki yeni konumuna taşır (sürükle-bırak sonrası). */
+    fun moveTabTo(id: Int, newIndex: Int) {
         val order = _state.value.tabOrder.toMutableList()
         val i = order.indexOf(id)
-        val j = i + delta
-        if (i < 0 || j !in order.indices) return
-        order[i] = order[j].also { order[j] = order[i] }
+        if (i < 0) return
+        order.removeAt(i)
+        order.add(newIndex.coerceIn(0, order.size), id)
         prefs.edit().putString("tab_order", order.joinToString(",")).apply()
         _state.update { it.copy(tabOrder = order) }
     }
@@ -272,7 +270,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 it.copy(
                     root = if (p.granted) RootState.GRANTED else RootState.DENIED,
                     hookStatus = p.hookStatus,
-                    moduleInstalled = p.moduleInstalled,
                     rootInfo = p.info,
                     debugLog = p.debugLog,
                     forceLock = p.forceLock,
@@ -558,7 +555,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 true
             }
             mp = np
-            _player.value = PlayerUi(key = key, playing = true, anchorTimeMs = SystemClock.elapsedRealtime())
+            playStartedAt = SystemClock.elapsedRealtime()
+            _player.value = PlayerUi(key = key, playing = true, anchorTimeMs = playStartedAt)
             np.prepareAsync()
         } catch (e: Exception) {
             release()
@@ -567,6 +565,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     private var hideJob: Job? = null
+    private var playStartedAt = 0L
 
     private fun release() {
         hideJob?.cancel()
@@ -586,8 +585,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (cur.key != key) return
         _player.value = cur.copy(playing = false, anchorPosMs = cur.durationMs)
         hideJob?.cancel()
+        // Uzun seslerde çubuk bitişte hemen kaybolur; çok kısa seslerde efekt görünsün diye çalmanın başından
+        // itibaren toplam en az ~0.9 sn görünür kalır.
+        val hold = maxOf(250L, 900L - (SystemClock.elapsedRealtime() - playStartedAt))
         hideJob = viewModelScope.launch(Dispatchers.Main) {
-            delay(1600)
+            delay(hold)
             if (_player.value.key == key && !_player.value.playing) _player.value = PlayerUi()
         }
     }
@@ -605,23 +607,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     // ---- Yardımcı modül / Sistem Arayüzü / rapor ----
 
-    fun installModule() = work {
-        val (ok, out) = ModuleInstaller.install(app())
-        if (ok) {
-            msg("Modül kuruldu. Etkinleşmesi için cihazı yeniden başlat.")
-            _state.update { it.copy(moduleInstalled = ModuleInstaller.isInstalled()) }
-        } else {
-            msg("Otomatik kurulamadı. Kök yöneticisinden /Download/SoundMod-SELinux.zip dosyasını elle kur. ${out.take(120)}")
-        }
-    }
-
     fun restartSysUiNow() = work {
         repo.restartSystemUi()
         msg("Sistem Arayüzü yenilendi")
-    }
-
-    fun reboot() {
-        viewModelScope.launch(Dispatchers.IO) { ModuleInstaller.reboot() }
     }
 
     fun buildReport() = work {
