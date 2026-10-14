@@ -12,6 +12,7 @@ import android.media.MediaPlayer
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.os.Handler
+import android.os.SystemClock
 import android.os.Looper
 import android.provider.Settings
 import androidx.core.content.ContextCompat
@@ -86,7 +87,10 @@ data class UiState(
     val forceLock: Boolean = false,
     val restartPrompt: RestartPrompt? = null,
     val skipRestartWarning: Boolean = false,
-    val slotNorm: Map<String, SlotNorm> = emptyMap()
+    val slotNorm: Map<String, SlotNorm> = emptyMap(),
+    /** Alt çubuktaki sekmelerin sırası (0 Sesler, 1 Kütüphane, 2 Gelişmiş, 3 Ayarlar) */
+    val tabOrder: List<Int> = listOf(0, 1, 2, 3),
+    val hiddenTabs: Set<Int> = emptySet()
 )
 
 /** Kullanıcıya sorulan Sistem Arayüzü yenileme önerisi */
@@ -116,7 +120,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             sys = readSys(),
             showIntro = !prefs.getBoolean("intro_seen", false),
             skipRestartWarning = prefs.getBoolean("skip_restart_warning", false),
-            slotNorm = readNorms()
+            slotNorm = readNorms(),
+            tabOrder = readTabOrder(),
+            hiddenTabs = readHiddenTabs()
         )
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -128,7 +134,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val messages: SharedFlow<String> = _messages.asSharedFlow()
 
     private var mp: MediaPlayer? = null
-    private var ticker: Job? = null
 
     private var libraryLoaded = false
     private var watching = false
@@ -219,6 +224,38 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             when (mode) { 1 -> "off"; 2 -> c.toString(); else -> "g" }
         ).apply()
         _state.update { it.copy(slotNorm = it.slotNorm + (slotId to SlotNorm(mode, c))) }
+    }
+
+    private fun readTabOrder(): List<Int> {
+        val parsed = prefs.getString("tab_order", null)?.split(",")?.mapNotNull { it.trim().toIntOrNull() }
+        return if (parsed != null && parsed.sorted() == listOf(0, 1, 2, 3)) parsed else listOf(0, 1, 2, 3)
+    }
+
+    private fun readHiddenTabs(): Set<Int> {
+        val parsed = prefs.getString("tab_hidden", "")!!.split(",").mapNotNull { it.trim().toIntOrNull() }
+        // Ayarlar (3) hiçbir zaman gizlenemez; en az bir başka sekme görünür kalmalı
+        val hidden = parsed.filter { it in 0..2 }.toSet()
+        return if (hidden.size >= 3) hidden - hidden.first() else hidden
+    }
+
+    /** Sekmeyi sıra içinde bir adım (−1 yukarı/sola, +1 aşağı/sağa) taşır. */
+    fun moveTab(id: Int, delta: Int) {
+        val order = _state.value.tabOrder.toMutableList()
+        val i = order.indexOf(id)
+        val j = i + delta
+        if (i < 0 || j !in order.indices) return
+        order[i] = order[j].also { order[j] = order[i] }
+        prefs.edit().putString("tab_order", order.joinToString(",")).apply()
+        _state.update { it.copy(tabOrder = order) }
+    }
+
+    fun setTabHidden(id: Int, hidden: Boolean) {
+        if (id !in 0..2) return // Ayarlar her zaman görünür
+        val cur = _state.value.hiddenTabs
+        val next = if (hidden) cur + id else cur - id
+        if (next.size >= 3) return // en az bir sekme (Ayarlar dışında) görünür kalmalı
+        prefs.edit().putString("tab_hidden", next.joinToString(",")).apply()
+        _state.update { it.copy(hiddenTabs = next) }
     }
 
     fun setSkipRestartWarning(v: Boolean) {
@@ -485,13 +522,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val p = mp
         if (cur.key == key && p != null) {
             if (cur.playing) {
+                val pos = runCatching { p.currentPosition }.getOrDefault(cur.anchorPosMs)
                 runCatching { p.pause() }
-                ticker?.cancel()
-                _player.value = cur.copy(playing = false)
+                _player.value = cur.copy(playing = false, anchorPosMs = pos)
             } else {
                 runCatching { p.start() }
-                _player.value = cur.copy(playing = true)
-                startTicker()
+                _player.value = cur.copy(playing = true, anchorTimeMs = SystemClock.elapsedRealtime())
             }
             return
         }
@@ -507,8 +543,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             np.setDataSource(path)
             np.setOnPreparedListener {
                 it.start()
-                _player.value = PlayerUi(key, true, 0f, 0, runCatching { it.duration }.getOrDefault(0))
-                startTicker()
+                _player.value = PlayerUi(
+                    key = key,
+                    playing = true,
+                    durationMs = runCatching { it.duration }.getOrDefault(0),
+                    anchorPosMs = 0,
+                    anchorTimeMs = SystemClock.elapsedRealtime()
+                )
             }
             np.setOnCompletionListener { finishPlayback(key) }
             np.setOnErrorListener { _, _, _ ->
@@ -517,7 +558,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 true
             }
             mp = np
-            _player.value = PlayerUi(key, true, 0f)
+            _player.value = PlayerUi(key = key, playing = true, anchorTimeMs = SystemClock.elapsedRealtime())
             np.prepareAsync()
         } catch (e: Exception) {
             release()
@@ -525,24 +566,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    private fun startTicker() {
-        ticker?.cancel()
-        ticker = viewModelScope.launch(Dispatchers.Main) {
-            while (isActive) {
-                val p = mp ?: break
-                val d = runCatching { p.duration }.getOrDefault(0)
-                val pos = runCatching { p.currentPosition }.getOrDefault(0)
-                val frac = if (d > 0) (pos.toFloat() / d).coerceIn(0f, 1f) else 0f
-                _player.update { it.copy(progress = frac, positionMs = pos, durationMs = d) }
-                delay(50)
-            }
-        }
-    }
-
     private var hideJob: Job? = null
 
     private fun release() {
-        ticker?.cancel()
         hideJob?.cancel()
         mp?.let { runCatching { it.release() } }
         mp = null
@@ -554,12 +580,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
      * böylece çok kısa seslerde de çubuk ve dalga efekti fark edilir.
      */
     private fun finishPlayback(key: String) {
-        ticker?.cancel()
         val cur = _player.value
         mp?.let { runCatching { it.release() } }
         mp = null
         if (cur.key != key) return
-        _player.value = cur.copy(playing = false, progress = 1f, positionMs = cur.durationMs)
+        _player.value = cur.copy(playing = false, anchorPosMs = cur.durationMs)
         hideJob?.cancel()
         hideJob = viewModelScope.launch(Dispatchers.Main) {
             delay(1600)

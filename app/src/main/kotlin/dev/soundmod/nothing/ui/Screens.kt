@@ -6,6 +6,7 @@ import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.Build
+import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
@@ -49,6 +50,7 @@ import androidx.compose.material.icons.filled.Build as WrenchIcon
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
@@ -88,11 +90,13 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
@@ -100,8 +104,10 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -144,8 +150,19 @@ data class UiActions(
     val applySilent: (SoundSlot) -> Unit,
     val setSlotNorm: (String, Int, Int) -> Unit,
     val reapplySlot: (SoundSlot) -> Unit,
-    val setSkipRestartWarning: (Boolean) -> Unit
+    val setSkipRestartWarning: (Boolean) -> Unit,
+    val moveTab: (Int, Int) -> Unit,
+    val setTabHidden: (Int, Boolean) -> Unit
 )
+
+private val TAB_TITLES = listOf("Sesler", "Kütüphane", "Gelişmiş", "Ayarlar")
+
+private fun tabIcon(id: Int): ImageVector = when (id) {
+    0 -> Icons.Default.Notifications
+    1 -> Icons.Default.Search
+    2 -> Icons.Default.WrenchIcon
+    else -> Icons.Default.Settings
+}
 
 @Composable
 fun SoundModScreen(
@@ -155,7 +172,10 @@ fun SoundModScreen(
     a: UiActions
 ) {
     var tab by remember { mutableIntStateOf(0) }
-    val titles = listOf("Sesler", "Kütüphane", "Gelişmiş", "Ayarlar")
+    val titles = TAB_TITLES
+    // Ayarlar (3) her zaman görünür; diğerleri kullanıcı sırasına göre, gizlenmemişse
+    val visibleTabs = state.tabOrder.filter { it == 3 || it !in state.hiddenTabs }
+    val current = if (tab in visibleTabs) tab else visibleTabs.first()
     val listStates = List(4) { rememberLazyListState() }
     var showRestartDialog by remember { mutableStateOf(false) }
     val onRestartClick: () -> Unit = {
@@ -166,9 +186,9 @@ fun SoundModScreen(
         }
     }
 
-    LaunchedEffect(tab) {
-        if (tab == 1) a.ensureLibrary()
-        if (tab == 2) a.refreshSys()
+    LaunchedEffect(current) {
+        if (current == 1) a.ensureLibrary()
+        if (current == 2) a.refreshSys()
     }
 
     CompositionLocalProvider(LocalReduceMotion provides state.reduceMotion) {
@@ -176,7 +196,7 @@ fun SoundModScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             topBar = {
                 Column {
-                    Header(titles[tab], state.reduceMotion, onRestartClick)
+                    Header(titles[current], state.reduceMotion, onRestartClick)
                     if (state.busy) {
                         if (state.reduceMotion) LinearProgressIndicator(Modifier.fillMaxWidth())
                         else LinearWavyProgressIndicator(Modifier.fillMaxWidth())
@@ -190,10 +210,14 @@ fun SoundModScreen(
                     tonalElevation = 3.dp
                 ) {
                     NavigationBar(containerColor = Color.Transparent) {
-                        NavigationBarItem(tab == 0, { tab = 0 }, { Icon(Icons.Default.Notifications, null) }, label = { Text("Sesler") })
-                        NavigationBarItem(tab == 1, { tab = 1 }, { Icon(Icons.Default.Search, null) }, label = { Text("Kütüphane") })
-                        NavigationBarItem(tab == 2, { tab = 2 }, { Icon(Icons.Default.WrenchIcon, null) }, label = { Text("Gelişmiş") })
-                        NavigationBarItem(tab == 3, { tab = 3 }, { Icon(Icons.Default.Settings, null) }, label = { Text("Ayarlar") })
+                        visibleTabs.forEach { id ->
+                            NavigationBarItem(
+                                selected = current == id,
+                                onClick = { tab = id },
+                                icon = { Icon(tabIcon(id), null) },
+                                label = { Text(titles[id]) }
+                            )
+                        }
                     }
                 }
             },
@@ -201,12 +225,12 @@ fun SoundModScreen(
         ) { pad ->
             Box(Modifier.padding(pad).fillMaxSize()) {
                 AnimatedContent(
-                    targetState = tab,
+                    targetState = current,
                     transitionSpec = {
                         if (state.reduceMotion) {
                             fadeIn(tween(0)) togetherWith fadeOut(tween(0))
                         } else {
-                            val dir = if (targetState > initialState) 1 else -1
+                            val dir = if (visibleTabs.indexOf(targetState) > visibleTabs.indexOf(initialState)) 1 else -1
                             (slideInHorizontally(spring(dampingRatio = 0.8f, stiffness = 300f)) { it * dir / 3 } + fadeIn(tween(220))) togetherWith
                                 (slideOutHorizontally(tween(180)) { -it * dir / 3 } + fadeOut(tween(120)))
                         }
@@ -963,26 +987,22 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
         item {
             val dynamicOk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(1, listState)) {
-                SettingsCard(segmentShape(0, 3), container) {
+                SettingsCard(segmentShape(0, 4), container) {
                     Text("Tema", style = MaterialTheme.typography.titleMedium)
-                    val modes = listOf("Sistemi izle", "Açık", "Koyu", "OLED (saf siyah)")
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for (row in 0..1) {
-                            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                for (col in 0..1) {
-                                    val i = row * 2 + col
-                                    FilterChip(
-                                        selected = state.themeMode == i,
-                                        onClick = { a.setThemeMode(i) },
-                                        label = { Text(modes[i]) },
-                                        shape = CircleShape
-                                    )
-                                }
-                            }
+                    val modes = listOf("Sistem", "Açık", "Koyu", "OLED")
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        modes.forEachIndexed { i, t ->
+                            FilterChip(
+                                selected = state.themeMode == i,
+                                onClick = { a.setThemeMode(i) },
+                                label = { Text(t, maxLines = 1, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                                shape = CircleShape,
+                                modifier = Modifier.weight(1f)
+                            )
                         }
                     }
                 }
-                SettingsCard(segmentShape(1, 3), container) {
+                SettingsCard(segmentShape(1, 4), container) {
                     SwitchRow(
                         "Sistem renklerini kullan",
                         if (dynamicOk) "Duvar kağıdı ve sistem temasına uyar (Material You)" else "Bu Android sürümünde desteklenmiyor",
@@ -1012,8 +1032,37 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         )
                     }
                 }
-                SettingsCard(segmentShape(2, 3), container) {
+                SettingsCard(segmentShape(2, 4), container) {
                     SwitchRow("Animasyonları azalt", "Daha sakin geçişler", state.reduceMotion, true, a.setReduceMotion)
+                }
+                SettingsCard(segmentShape(3, 4), container) {
+                    Text("Alt gezinti çubuğu", style = MaterialTheme.typography.titleMedium)
+                    Text(
+                        "Liste sırası çubuktaki soldan sağa sıradır. Sekmeleri taşıyabilir, istemediklerini gizleyebilirsin. " +
+                            "Ayarlar sekmesi her zaman görünür.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    val visibleOthers = state.tabOrder.count { it != 3 && it !in state.hiddenTabs }
+                    state.tabOrder.forEachIndexed { index, id ->
+                        val shown = id == 3 || id !in state.hiddenTabs
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(tabIcon(id), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Spacer(Modifier.width(12.dp))
+                            Text(TAB_TITLES[id], style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { a.moveTab(id, -1) }, enabled = index > 0) {
+                                Icon(Icons.Default.KeyboardArrowUp, "Yukarı taşı")
+                            }
+                            IconButton(onClick = { a.moveTab(id, 1) }, enabled = index < state.tabOrder.lastIndex) {
+                                Icon(Icons.Default.KeyboardArrowDown, "Aşağı taşı")
+                            }
+                            Switch(
+                                checked = shown,
+                                onCheckedChange = { a.setTabHidden(id, !it) },
+                                enabled = id != 3 && !(shown && visibleOthers <= 1)
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -1063,7 +1112,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
         item {
             Text(
-                "SoundMod 0.6.0",
+                "SoundMod 0.7.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
@@ -1269,23 +1318,41 @@ private fun ReportSheet(text: String, onDismiss: () -> Unit) {
 // Çalma ilerlemesi, root bilgisi, ilk açılış bilgisi
 // ------------------------------------------------------------------------------------------
 
-/** Ses süresi boyunca saniye saniye ilerleyen dalgalı çubuk; dalga baştan sona görünür. */
+/**
+ * Ses süresi boyunca ilerleyen dalgalı çubuk. Konum, oynatıcı sorgulanmadan (yoklama yok) çalma başlangıç
+ * anından kare kare hesaplanır; böylece çubuk takılmadan akar. Dalga baştan sona görünür.
+ */
 @Composable
 private fun PlayProgress(player: State<PlayerUi>, modifier: Modifier = Modifier) {
-    // Çok kısa seslerde de çubuğun ilerleyişi görünsün diye değer yumuşatılır
-    val shown = animateFloatAsState(
-        targetValue = player.value.progress,
-        animationSpec = tween(durationMillis = 140),
-        label = "progress"
-    )
+    val p = player.value
+    val progress = remember { mutableFloatStateOf(0f) }
+    val shownMs = remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(p.key, p.playing, p.anchorPosMs, p.anchorTimeMs, p.durationMs) {
+        val dur = p.durationMs
+        fun posNow(): Int =
+            if (p.playing) (p.anchorPosMs + (SystemClock.elapsedRealtime() - p.anchorTimeMs)).toInt() else p.anchorPosMs
+        fun apply(pos: Int) {
+            val c = if (dur > 0) pos.coerceIn(0, dur) else 0
+            progress.floatValue = if (dur > 0) c.toFloat() / dur else 0f
+            // Süre yazısı saniyenin onda biri hassasiyetinde güncellenir (her karede yeniden çizim olmasın)
+            if (!p.playing || kotlin.math.abs(c - shownMs.intValue) >= 100) shownMs.intValue = c
+        }
+        apply(posNow())
+        while (p.playing) {
+            withFrameNanos { }
+            apply(posNow())
+        }
+    }
+
     Column(modifier) {
         LinearWavyProgressIndicator(
-            progress = { shown.value },
+            progress = { progress.floatValue },
             amplitude = { 1f },
             modifier = Modifier.fillMaxWidth()
         )
         Text(
-            timeText(player.value.positionMs, player.value.durationMs),
+            timeText(shownMs.intValue, p.durationMs),
             style = MaterialTheme.typography.labelSmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.align(Alignment.End).padding(top = 4.dp)

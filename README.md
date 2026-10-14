@@ -25,8 +25,9 @@ Hedef: Nothing Phone (4a) · Nothing OS 4.1 · Android 16 (diğer AOSP tabanlı 
 * **Kütüphane:** bulunan sistem seslerini dinle (çal/duraklat, ilerleme çubuğu).
 * **Gelişmiş:** sistem ses anahtarları (dokunma, kilit ekranı, şarj sesleri; zil modu ve ses seviyeleri), ses işleme
   (genel normalize + ses başına ayrı normalize), kilit seslerini zorla çal.
-* **Ayarlar:** durum kartları (Root, Vector, SELinux modülü), tema (sistem/açık/koyu/OLED), renkler ve paletler,
-  Sistem Arayüzü yenileme, tanılama.
+* **Ayarlar:** durum kartları (Root, Vector, SELinux modülü; daralıp açılır), tema (sistem/açık/koyu/OLED), renkler
+  ve paletler, alt çubuktaki sekmelerin sırası ve gizlenmesi (Ayarlar her zaman görünür), Sistem Arayüzü yenileme,
+  tanılama.
 * Sağ üstteki düğme Sistem Arayüzünü yeniden başlatır; ilk basışta uyarır, "Bir daha gösterme" ile uyarı kapatılabilir.
 
 ## Tasarım ilkeleri
@@ -39,6 +40,7 @@ Bunun uygulamadaki karşılıkları:
 
 * Uygulamada servis, açılış alıcısı ya da arka plan işi yok; kapalıyken hiçbir şey çalışmaz.
 * Sistem ses dinleyicileri (zil modu, ses seviyesi, ayar gözlemcileri) yalnızca uygulama ekrandayken açıktır.
+* Ses önizlemesinin ilerleme çubuğu oynatıcıyı yoklamaz; başlangıç anından kare kare hesaplanır.
 * Root sorguları açılışta tek `su` çağrısında toplanır; kütüphane taraması ilk gerektiğinde yapılır.
 * Sistem süreçlerindeki hook'lar olay tabanlıdır (yoklama ya da sürekli iş parçacığı yok). Override dizini bellekte
   önbelleklenir; her olayda yalnızca dizinin değişim zamanına bakılır.

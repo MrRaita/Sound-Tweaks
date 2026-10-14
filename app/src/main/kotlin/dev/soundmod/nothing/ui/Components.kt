@@ -117,11 +117,14 @@ fun PlayPauseButton(playing: Boolean, onClick: () -> Unit) {
     }
 }
 
-/** Çalma durumu: hangi öğe çalıyor, ilerleme */
+/**
+ * Çalma durumu. İlerleme sürekli güncellenmez (arka plan iş yükü yok): çalma konumu ve bu konumun alındığı
+ * an (SystemClock.elapsedRealtime) tutulur; çubuk kareden kareye bu iki değerden kendi hesaplanır.
+ */
 data class PlayerUi(
     val key: String? = null,
     val playing: Boolean = false,
-    val progress: Float = 0f,
-    val positionMs: Int = 0,
-    val durationMs: Int = 0
+    val durationMs: Int = 0,
+    val anchorPosMs: Int = 0,
+    val anchorTimeMs: Long = 0L
 )
