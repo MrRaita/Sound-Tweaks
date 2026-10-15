@@ -89,7 +89,8 @@ class MainActivity : ComponentActivity() {
                     reapplySlot = vm::reapplySlot,
                     setSkipRestartWarning = vm::setSkipRestartWarning,
                     moveTabTo = vm::moveTabTo,
-                    setTabHidden = vm::setTabHidden
+                    setTabHidden = vm::setTabHidden,
+                    setNavStyle = vm::setNavStyle
                 )
             }
 

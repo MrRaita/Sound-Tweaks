@@ -14,7 +14,7 @@ android {
         targetSdk = 36
         // Her derlemede artsın diye CI çalışma numarasını kullanır
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.8.0"
+        versionName = "0.9.0"
     }
 
     buildTypes {

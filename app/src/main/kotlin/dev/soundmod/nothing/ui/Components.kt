@@ -31,6 +31,9 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
+/** Listelerin alt boşluğu: yüzen çubukta çubuğun altında kalmasın diye büyür. */
+val LocalListBottomPadding = compositionLocalOf { 24.dp }
+
 /** "Animasyonları azalt" ayarı; efekt üreten modifier'lar bunu okur. */
 val LocalReduceMotion = compositionLocalOf { false }
 

@@ -40,6 +40,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -52,6 +53,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build as WrenchIcon
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
@@ -66,6 +68,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.LocalRippleConfiguration
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.ExperimentalMaterial3ExpressiveApi
 import androidx.compose.material3.FilledTonalButton
@@ -105,6 +108,8 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Shape
@@ -114,6 +119,7 @@ import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
@@ -122,6 +128,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import kotlinx.coroutines.delay
 import dev.soundmod.nothing.core.RootInfo
 import dev.soundmod.nothing.core.SoundCatalog
 import dev.soundmod.nothing.core.SoundSlot
@@ -161,7 +168,8 @@ data class UiActions(
     val reapplySlot: (SoundSlot) -> Unit,
     val setSkipRestartWarning: (Boolean) -> Unit,
     val moveTabTo: (Int, Int) -> Unit,
-    val setTabHidden: (Int, Boolean) -> Unit
+    val setTabHidden: (Int, Boolean) -> Unit,
+    val setNavStyle: (Int) -> Unit
 )
 
 private val TAB_TITLES = listOf("Sesler", "Kütüphane", "Gelişmiş", "Ayarlar")
@@ -200,7 +208,13 @@ fun SoundModScreen(
         if (current == 2) a.refreshSys()
     }
 
-    CompositionLocalProvider(LocalReduceMotion provides state.reduceMotion) {
+    val floating = state.navStyle == 1
+    val listBottom = if (floating) 96.dp else 24.dp
+
+    CompositionLocalProvider(
+        LocalReduceMotion provides state.reduceMotion,
+        LocalListBottomPadding provides listBottom
+    ) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.surface,
             topBar = {
@@ -213,20 +227,21 @@ fun SoundModScreen(
                 }
             },
             bottomBar = {
-                Surface(
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    shape = androidx.compose.foundation.shape.RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp),
-                    tonalElevation = 3.dp
-                ) {
-                    NavigationBar(containerColor = Color.Transparent) {
-                        visibleTabs.forEach { id ->
-                            NavigationBarItem(
-                                selected = current == id,
-                                onClick = { tab = id },
-                                icon = { Icon(tabIcon(id), null) },
-                                label = { Text(titles[id]) }
-                            )
-                        }
+                if (!floating) {
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .navigationBarsPadding()
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        ExpandingNavBar(
+                            tabs = visibleTabs,
+                            current = current,
+                            title = { titles[it] },
+                            icon = { tabIcon(it) },
+                            reduceMotion = state.reduceMotion,
+                            onSelect = { tab = it }
+                        )
                     }
                 }
             },
@@ -253,8 +268,24 @@ fun SoundModScreen(
                         else -> SettingsTab(state, a, listStates[3], onRestartClick)
                     }
                 }
+                if (floating) {
+                    FloatingNavBar(
+                        tabs = visibleTabs,
+                        current = current,
+                        title = { titles[it] },
+                        icon = { tabIcon(it) },
+                        reduceMotion = state.reduceMotion,
+                        onSelect = { tab = it },
+                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
+                    )
+                }
                 if (state.busy && !state.reduceMotion) {
-                    LoadingIndicator(Modifier.align(Alignment.BottomCenter).padding(bottom = 16.dp).size(48.dp))
+                    LoadingIndicator(
+                        Modifier
+                            .align(Alignment.BottomCenter)
+                            .padding(bottom = if (floating) 88.dp else 16.dp)
+                            .size(48.dp)
+                    )
                 }
             }
         }
@@ -342,7 +373,7 @@ private fun SoundsTab(
 
     LazyColumn(
         state = listState,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = LocalListBottomPadding.current),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         if (state.root == RootState.DENIED) {
@@ -439,13 +470,15 @@ private fun SoundsTab(
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
                 )
-                SoundList(
-                    sounds = state.library,
-                    loading = state.libraryLoading,
-                    player = player,
-                    onPlay = a.playLibrary,
-                    onPick = { a.pickSystem(slot, it); pickerSlot = null }
-                )
+                CompositionLocalProvider(LocalListBottomPadding provides 24.dp) {
+                    SoundList(
+                        sounds = state.library,
+                        loading = state.libraryLoading,
+                        player = player,
+                        onPlay = a.playLibrary,
+                        onPick = { a.pickSystem(slot, it); pickerSlot = null }
+                    )
+                }
             }
         }
     }
@@ -508,7 +541,7 @@ private fun SlotRow(
         AnimatedVisibility(
             visible = active,
             enter = fadeIn(tween(120)) + expandVertically(tween(160)),
-            exit = fadeOut(tween(120)) + shrinkVertically(tween(160))
+            exit = fadeOut(tween(80)) + shrinkVertically(tween(110))
         ) {
             PlayProgress(player, Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp))
         }
@@ -526,30 +559,23 @@ private fun LibraryTab(
     a: UiActions,
     listState: LazyListState
 ) {
-    Column(Modifier.fillMaxSize()) {
-        Row(
-            Modifier.padding(start = 28.dp, end = 16.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text(
-                "${state.library.size} ses bulundu",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.weight(1f)
-            )
+    SoundList(
+        sounds = state.library,
+        loading = state.libraryLoading,
+        player = player,
+        onPlay = a.playLibrary,
+        onPick = null,
+        listState = listState,
+        actions = {
             IconButton(onClick = a.reloadLibrary) { Icon(Icons.Default.Refresh, "Yeniden tara") }
         }
-        SoundList(
-            sounds = state.library,
-            loading = state.libraryLoading,
-            player = player,
-            onPlay = a.playLibrary,
-            onPick = null,
-            listState = listState
-        )
-    }
+    )
 }
 
+/**
+ * Ses listesi. Ekran arama çubuğuyla açılmaz: üstte yalnızca bir arama simgesi vardır; dokununca arama alanı
+ * açılır, kapatılınca temizlenir.
+ */
 @Composable
 private fun SoundList(
     sounds: List<SystemSound>,
@@ -557,9 +583,11 @@ private fun SoundList(
     player: State<PlayerUi>,
     onPlay: (String) -> Unit,
     onPick: ((SystemSound) -> Unit)?,
-    listState: LazyListState = rememberLazyListState()
+    listState: LazyListState = rememberLazyListState(),
+    actions: @Composable () -> Unit = {}
 ) {
     var query by remember { mutableStateOf("") }
+    var searching by remember { mutableStateOf(false) }
     var category by remember { mutableStateOf<String?>(null) }
     val categories = remember(sounds) { sounds.map { it.category }.distinct() }
     val filtered = remember(sounds, query, category) {
@@ -568,17 +596,57 @@ private fun SoundList(
                 (query.isBlank() || it.name.contains(query, ignoreCase = true))
         }
     }
+    val focus = remember { FocusRequester() }
+    val keyboard = LocalSoftwareKeyboardController.current
+    LaunchedEffect(searching) {
+        if (searching) {
+            // Arama alanı açılış animasyonuyla oluşur; odak istemeden önce yerleşmesi beklenir
+            delay(80)
+            runCatching { focus.requestFocus() }
+            keyboard?.show()
+        }
+    }
 
     Column(Modifier.fillMaxSize()) {
-        OutlinedTextField(
-            value = query,
-            onValueChange = { query = it },
-            singleLine = true,
-            shape = CircleShape,
-            label = { Text("Ara") },
-            leadingIcon = { Icon(Icons.Default.Search, null) },
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)
-        )
+        Row(
+            Modifier.padding(start = 28.dp, end = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                if (filtered.size != sounds.size) "${filtered.size} / ${sounds.size} ses" else "${sounds.size} ses bulundu",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.weight(1f)
+            )
+            IconButton(onClick = {
+                searching = !searching
+                if (!searching) query = ""
+            }) {
+                Icon(
+                    if (searching) Icons.Default.Close else Icons.Default.Search,
+                    if (searching) "Aramayı kapat" else "Ara"
+                )
+            }
+            actions()
+        }
+        AnimatedVisibility(
+            visible = searching,
+            enter = fadeIn(tween(120)) + expandVertically(tween(180)),
+            exit = fadeOut(tween(90)) + shrinkVertically(tween(140))
+        ) {
+            OutlinedTextField(
+                value = query,
+                onValueChange = { query = it },
+                singleLine = true,
+                shape = CircleShape,
+                placeholder = { Text("Ses ara") },
+                leadingIcon = { Icon(Icons.Default.Search, null) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .focusRequester(focus)
+            )
+        }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -612,7 +680,7 @@ private fun SoundList(
             } else {
                 LazyColumn(
                     state = listState,
-                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = 24.dp),
+                    contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 4.dp, bottom = LocalListBottomPadding.current),
                     verticalArrangement = Arrangement.spacedBy(3.dp)
                 ) {
                     itemsIndexed(filtered, key = { _, s -> s.path }) { i, s ->
@@ -670,7 +738,7 @@ private fun SoundRow(
             AnimatedVisibility(
                 visible = active,
                 enter = fadeIn(tween(120)) + expandVertically(tween(160)),
-                exit = fadeOut(tween(120)) + shrinkVertically(tween(160))
+                exit = fadeOut(tween(80)) + shrinkVertically(tween(110))
             ) {
                 PlayProgress(player, Modifier.padding(start = 20.dp, end = 20.dp, bottom = 10.dp))
             }
@@ -700,7 +768,7 @@ private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) 
 
     LazyColumn(
         state = listState,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = LocalListBottomPadding.current),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         // ---- Sistem ses anahtarları ----
@@ -949,7 +1017,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
     LazyColumn(
         state = listState,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = 24.dp),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = LocalListBottomPadding.current),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         // ---- Durum ----
@@ -1045,6 +1113,16 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        listOf("Gömülü", "Yüzen").forEachIndexed { i, t ->
+                            FilterChip(
+                                selected = state.navStyle == i,
+                                onClick = { a.setNavStyle(i) },
+                                label = { Text(t) },
+                                shape = CircleShape
+                            )
+                        }
+                    }
                     TabOrderEditor(state, a)
                 }
             }
@@ -1076,7 +1154,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    FilledTonalButton(
+                    OutlinedButton(
                         onClick = a.buildReport,
                         enabled = state.root == RootState.GRANTED,
                         modifier = Modifier.fillMaxWidth()
@@ -1095,7 +1173,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
         item {
             Text(
-                "SoundMod 0.8.0",
+                "SoundMod 0.9.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
@@ -1132,6 +1210,7 @@ private fun StatusCard(
         label = "chevron"
     )
     Card(
+        onClick = { choice = if (expanded) 2 else 1 },
         shape = shape,
         colors = CardDefaults.cardColors(containerColor = container),
         modifier = Modifier.fillMaxWidth()
@@ -1140,7 +1219,6 @@ private fun StatusCard(
             Row(
                 Modifier
                     .fillMaxWidth()
-                    .clickable { choice = if (expanded) 2 else 1 }
                     .padding(horizontal = 20.dp, vertical = 16.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1426,15 +1504,20 @@ private fun RestartConfirmDialog(onConfirm: (Boolean) -> Unit, onDismiss: () -> 
                         "titreyebilir. Açık uygulamalar ve verilerin etkilenmez. Modülü yeni etkinleştirdiysen ya da " +
                         "bir ses çalmıyorsa işe yarar."
                 )
-                Row(
-                    Modifier
-                        .fillMaxWidth()
-                        .clip(MaterialTheme.shapes.medium)
-                        .clickable { dontShowAgain = !dontShowAgain },
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Checkbox(checked = dontShowAgain, onCheckedChange = { dontShowAgain = it })
-                    Text("Bir daha gösterme", style = MaterialTheme.typography.bodyMedium)
+                // Satır ve kutucuk ayrı ayrı dokunulabilir kalır; gri dalga (ripple) izi gösterilmez
+                CompositionLocalProvider(LocalRippleConfiguration provides null) {
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null
+                            ) { dontShowAgain = !dontShowAgain },
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Checkbox(checked = dontShowAgain, onCheckedChange = { dontShowAgain = it })
+                        Text("Bir daha gösterme", style = MaterialTheme.typography.bodyMedium)
+                    }
                 }
             }
         },

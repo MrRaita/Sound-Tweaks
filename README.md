@@ -17,7 +17,8 @@ ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler s
 - İsteğe bağlı "zorla çal" modu: kilit sesleri sessiz/titreşim modunda da duyulacak şekilde medya ses akışından çalınır.
 - Sistem Arayüzünü yeniden başlatma düğmesi (ilk kullanımda uyarı gösterir, uyarı kapatılabilir).
 - Tema: sistem, açık, koyu, OLED (saf siyah); Material You renkleri ya da 12 hazır palet.
-- Alt gezinti çubuğunda sekme sırasını sürükle-bırak ile değiştirme ve sekmeleri gizleme.
+- Alt gezinti çubuğu için iki stil (gömülü: seçili sekme simge ve yazıyla genişleyen hap; yüzen: gölgeli, yalnızca
+  simgeli çubuk), sekme sırasını sürükle-bırak ile değiştirme ve sekmeleri gizleme.
 - Tanılama raporu (dosya izinleri, ayarlar, hook durumu, SELinux reddleri).
 
 ## Desteklenen sesler
@@ -53,7 +54,7 @@ Geliştirme ve test ortamı: Nothing Phone (4a), Nothing OS 4.1, Android 16, Ker
 
 - **Sesler:** Bir sese dokunulduğunda sistem seslerinden seçme, kendi dosyasını seçme, susturma ya da varsayılana
   dönme seçenekleri açılır. Dosyalar çözülüp WAV olarak depoya yazılır.
-- **Kütüphane:** Bulunan sistem sesleri aranır, filtrelenir ve dinlenir.
+- **Kütüphane:** Bulunan sistem sesleri filtrelenir, arama simgesiyle aranır ve dinlenir.
 - **Gelişmiş:** Sistem ses anahtarları, ses işleme (genel ve ses başına normalize), kilit seslerini zorla çal.
 - **Ayarlar:** Durum kartları, tema ve renkler, alt çubuk düzeni, Sistem Arayüzü yenileme ve tanılama.
 

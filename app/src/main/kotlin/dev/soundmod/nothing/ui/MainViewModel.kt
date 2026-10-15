@@ -88,7 +88,9 @@ data class UiState(
     val slotNorm: Map<String, SlotNorm> = emptyMap(),
     /** Alt çubuktaki sekmelerin sırası (0 Sesler, 1 Kütüphane, 2 Gelişmiş, 3 Ayarlar) */
     val tabOrder: List<Int> = listOf(0, 1, 2, 3),
-    val hiddenTabs: Set<Int> = emptySet()
+    val hiddenTabs: Set<Int> = emptySet(),
+    /** Alt çubuk stili: 0 = gömülü (genişleyen hap), 1 = yüzen */
+    val navStyle: Int = 0
 )
 
 /** Kullanıcıya sorulan Sistem Arayüzü yenileme önerisi */
@@ -120,7 +122,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             skipRestartWarning = prefs.getBoolean("skip_restart_warning", false),
             slotNorm = readNorms(),
             tabOrder = readTabOrder(),
-            hiddenTabs = readHiddenTabs()
+            hiddenTabs = readHiddenTabs(),
+            navStyle = prefs.getInt("nav_style", 0)
         )
     )
     val state: StateFlow<UiState> = _state.asStateFlow()
@@ -245,6 +248,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         order.add(newIndex.coerceIn(0, order.size), id)
         prefs.edit().putString("tab_order", order.joinToString(",")).apply()
         _state.update { it.copy(tabOrder = order) }
+    }
+
+    fun setNavStyle(v: Int) {
+        prefs.edit().putInt("nav_style", v).apply()
+        _state.update { it.copy(navStyle = v) }
     }
 
     fun setTabHidden(id: Int, hidden: Boolean) {
@@ -586,8 +594,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _player.value = cur.copy(playing = false, anchorPosMs = cur.durationMs)
         hideJob?.cancel()
         // Uzun seslerde çubuk bitişte hemen kaybolur; çok kısa seslerde efekt görünsün diye çalmanın başından
-        // itibaren toplam en az ~0.9 sn görünür kalır.
-        val hold = maxOf(250L, 900L - (SystemClock.elapsedRealtime() - playStartedAt))
+        // itibaren toplam en az ~0.5 sn görünür kalır.
+        val hold = maxOf(100L, 500L - (SystemClock.elapsedRealtime() - playStartedAt))
         hideJob = viewModelScope.launch(Dispatchers.Main) {
             delay(hold)
             if (_player.value.key == key && !_player.value.playing) _player.value = PlayerUi()
