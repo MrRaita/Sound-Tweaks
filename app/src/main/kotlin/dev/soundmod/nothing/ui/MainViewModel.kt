@@ -90,7 +90,8 @@ data class UiState(
     val tabOrder: List<Int> = listOf(0, 1, 2, 3),
     val hiddenTabs: Set<Int> = emptySet(),
     /** Alt çubuk stili: 0 = gömülü (genişleyen hap), 1 = yüzen */
-    val navStyle: Int = 0
+    val navStyle: Int = 0,
+    val noHpWarning: Boolean = false
 )
 
 /** Kullanıcıya sorulan Sistem Arayüzü yenileme önerisi */
@@ -281,6 +282,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     rootInfo = p.info,
                     debugLog = p.debugLog,
                     forceLock = p.forceLock,
+                    noHpWarning = p.noHpWarning,
                     slots = readSlots(),
                     sys = readSys()
                 )
@@ -682,6 +684,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             } else {
                 msg("Zorla çalma kapatıldı, stok kilit sesi mekanizması kullanılacak")
             }
+        }
+    }
+
+    /** Kulaklık ses uyarısını kapat/aç (bayrak dosyası; anında geçerli, yeniden başlatma gerekmez). */
+    fun setNoHpWarning(on: Boolean) = work {
+        val r = repo.setNoHpWarning(on)
+        if (r.ok) {
+            _state.update { it.copy(noHpWarning = on) }
+            msg(if (on) "Kulaklık ses uyarısı kapatıldı" else "Kulaklık ses uyarısı yeniden açıldı")
+        } else {
+            msg("Ayar değiştirilemedi: ${r.out}")
         }
     }
 

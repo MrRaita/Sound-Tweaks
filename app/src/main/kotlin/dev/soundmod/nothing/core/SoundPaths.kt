@@ -21,6 +21,11 @@ object SoundPaths {
      * aşıp medya ses seviyesiyle SoundMod tarafından çalınır. Yoksa stok mekanizma kullanılır.
      */
     const val FORCE_FLAG = "$BASE/.force_lock"
+    /**
+     * Bu dosya varsa kulaklıkta ses yükseltilirken gösterilen "güvenli medya sesi" (kulak koruma) uyarısı
+     * atlanır. Hook her çağrıda yalnızca dosyanın varlığına bakar; anında geçerli olur.
+     */
+    const val NO_HP_WARNING_FLAG = "$BASE/.no_hp_warning"
     /** Herkesin (SystemUI dahil) okuyabildiği SELinux tipi */
     const val CONTEXT = "u:object_r:system_file:s0"
 

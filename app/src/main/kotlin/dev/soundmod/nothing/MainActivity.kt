@@ -90,7 +90,8 @@ class MainActivity : ComponentActivity() {
                     setSkipRestartWarning = vm::setSkipRestartWarning,
                     moveTabTo = vm::moveTabTo,
                     setTabHidden = vm::setTabHidden,
-                    setNavStyle = vm::setNavStyle
+                    setNavStyle = vm::setNavStyle,
+                    setNoHpWarning = vm::setNoHpWarning
                 )
             }
 

@@ -17,7 +17,8 @@ data class Probe(
     val info: RootInfo,
     val hookStatus: String?,
     val debugLog: Boolean,
-    val forceLock: Boolean
+    val forceLock: Boolean,
+    val noHpWarning: Boolean
 )
 
 /**
@@ -46,6 +47,7 @@ object RootProbe {
             echo "lkm=${'$'}(grep -c -i kernelsu /proc/modules 2>/dev/null)"
             echo "debug=${'$'}([ -e ${Root.q(SoundPaths.DEBUG_FLAG)} ] && echo yes)"
             echo "force=${'$'}([ -e ${Root.q(SoundPaths.FORCE_FLAG)} ] && echo yes)"
+            echo "nohp=${'$'}([ -e ${Root.q(SoundPaths.NO_HP_WARNING_FLAG)} ] && echo yes)"
             echo "sys=${'$'}(cat ${SoundPaths.STATUS_SYSTEM} 2>/dev/null)"
             echo "sysui=${'$'}(settings get global ${SoundPaths.SYSUI_STATUS_KEY} 2>/dev/null)"
         """.trimIndent()
@@ -57,7 +59,7 @@ object RootProbe {
             if (i > 0) kv[line.substring(0, i)] = line.substring(i + 1).trim()
         }
         val granted = kv["uid"] == "0"
-        if (!granted) return Probe(false, RootInfo(), null, false, false)
+        if (!granted) return Probe(false, RootInfo(), null, false, false, false)
 
         val ksud = kv["ksud"].orEmpty()
         val magisk = kv["magisk"].orEmpty()
@@ -89,6 +91,6 @@ object RootProbe {
             kv["sys"]?.takeIf { it.isNotBlank() },
             kv["sysui"]?.takeIf { it.isNotBlank() && it != "null" }
         ).takeIf { it.isNotEmpty() }?.joinToString("\n")
-        return Probe(true, info, hook, kv["debug"] == "yes", kv["force"] == "yes")
+        return Probe(true, info, hook, kv["debug"] == "yes", kv["force"] == "yes", kv["nohp"] == "yes")
     }
 }

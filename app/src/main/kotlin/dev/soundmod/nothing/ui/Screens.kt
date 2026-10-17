@@ -19,6 +19,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -41,6 +42,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
@@ -65,6 +70,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
@@ -100,6 +106,8 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -108,6 +116,16 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.draw.clip
@@ -128,6 +146,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.delay
 import dev.soundmod.nothing.core.RootInfo
 import dev.soundmod.nothing.core.SoundCatalog
@@ -169,7 +188,8 @@ data class UiActions(
     val setSkipRestartWarning: (Boolean) -> Unit,
     val moveTabTo: (Int, Int) -> Unit,
     val setTabHidden: (Int, Boolean) -> Unit,
-    val setNavStyle: (Int) -> Unit
+    val setNavStyle: (Int) -> Unit,
+    val setNoHpWarning: (Boolean) -> Unit
 )
 
 private val TAB_TITLES = listOf("Sesler", "Kütüphane", "Gelişmiş", "Ayarlar")
@@ -202,52 +222,69 @@ fun SoundModScreen(
             showRestartDialog = true
         }
     }
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+
+    // Çekme-itme: kaydırma hızı çubukları ve satırları yaylı biçimde gerer, bırakınca taşıp sallanırlar
+    val physics = remember { PullPhysics(scope) }
+    physics.enabled = !state.reduceMotion
+    val pullFn = remember(physics) { { physics.pull.value } }
+    val nested = remember(physics) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                physics.onDelta(available.y)
+                return Offset.Zero
+            }
+        }
+    }
+
+    // Üst başlığın daralması: etkin sekmenin listesinin kaydırma konumuna bağlıdır; gevşek yayla izlenir
+    val collapse = remember { Animatable(0f) }
+    val collapseRange = with(density) { 56.dp.toPx() }
+    LaunchedEffect(current, state.reduceMotion) {
+        snapshotFlow {
+            val ls = listStates[current]
+            if (ls.firstVisibleItemIndex > 0) 1f else (ls.firstVisibleItemScrollOffset / collapseRange).coerceIn(0f, 1f)
+        }.collectLatest { target ->
+            if (state.reduceMotion) collapse.snapTo(target)
+            else collapse.animateTo(target, spring(dampingRatio = 0.62f, stiffness = 380f))
+        }
+    }
+    val collapseFn = remember(collapse) { { collapse.value } }
 
     LaunchedEffect(current) {
         if (current == 1) a.ensureLibrary()
         if (current == 2) a.refreshSys()
     }
 
-    val floating = state.navStyle == 1
-    val listBottom = if (floating) 96.dp else 24.dp
+    // Çubuklar listenin üstünde yüzer; listeler ekranın altına kadar uzanır, son satırlar çubuğun altında kalmaz
+    val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+    val listBottom = 96.dp + navInset
 
     CompositionLocalProvider(
         LocalReduceMotion provides state.reduceMotion,
-        LocalListBottomPadding provides listBottom
+        LocalListBottomPadding provides listBottom,
+        LocalPull provides pullFn
     ) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.surface,
             topBar = {
                 Column {
-                    Header(titles[current], state.reduceMotion, onRestartClick)
+                    Header(titles[current], collapseFn, pullFn, state.reduceMotion, onRestartClick)
                     if (state.busy) {
                         if (state.reduceMotion) LinearProgressIndicator(Modifier.fillMaxWidth())
                         else LinearWavyProgressIndicator(Modifier.fillMaxWidth())
                     }
                 }
             },
-            bottomBar = {
-                if (!floating) {
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .navigationBarsPadding()
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        ExpandingNavBar(
-                            tabs = visibleTabs,
-                            current = current,
-                            title = { titles[it] },
-                            icon = { tabIcon(it) },
-                            reduceMotion = state.reduceMotion,
-                            onSelect = { tab = it }
-                        )
-                    }
-                }
-            },
-            snackbarHost = { SnackbarHost(snackbar) }
+            snackbarHost = { SnackbarHost(snackbar, modifier = Modifier.padding(bottom = 88.dp)) }
         ) { pad ->
-            Box(Modifier.padding(pad).fillMaxSize()) {
+            Box(
+                Modifier
+                    .padding(top = pad.calculateTopPadding())
+                    .fillMaxSize()
+                    .nestedScroll(nested)
+            ) {
                 AnimatedContent(
                     targetState = current,
                     transitionSpec = {
@@ -268,7 +305,14 @@ fun SoundModScreen(
                         else -> SettingsTab(state, a, listStates[3], onRestartClick)
                     }
                 }
-                if (floating) {
+
+                // İki stil de yüzer; fark yalnızca genişliktir (geniş çubukta seçili sekme yazıyla genişler)
+                val barModifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .navigationBarsPadding()
+                    .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                    .elasticBar(pullFn)
+                if (state.navStyle == 1) {
                     FloatingNavBar(
                         tabs = visibleTabs,
                         current = current,
@@ -276,14 +320,24 @@ fun SoundModScreen(
                         icon = { tabIcon(it) },
                         reduceMotion = state.reduceMotion,
                         onSelect = { tab = it },
-                        modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp)
+                        modifier = barModifier
+                    )
+                } else {
+                    ExpandingNavBar(
+                        tabs = visibleTabs,
+                        current = current,
+                        title = { titles[it] },
+                        icon = { tabIcon(it) },
+                        reduceMotion = state.reduceMotion,
+                        onSelect = { tab = it },
+                        modifier = barModifier
                     )
                 }
                 if (state.busy && !state.reduceMotion) {
                     LoadingIndicator(
                         Modifier
                             .align(Alignment.BottomCenter)
-                            .padding(bottom = if (floating) 88.dp else 16.dp)
+                            .padding(bottom = 88.dp + navInset)
                             .size(48.dp)
                     )
                 }
@@ -307,42 +361,115 @@ fun SoundModScreen(
 }
 
 // ------------------------------------------------------------------------------------------
-// Başlık: üstte uygulama adı, altında bulunulan sekme
+// Başlık: sekme başında geniş; aşağı kaydırınca uygulama adı yukarı çekilir, yerine sekme adı geçer.
+// Alt sınır kaydırma hareketine göre çekilip itilir.
 // ------------------------------------------------------------------------------------------
 
 @Composable
-private fun Header(title: String, reduceMotion: Boolean, onRestart: () -> Unit) {
-    Row(
+private fun TabTitle(title: String, style: TextStyle, color: Color, reduceMotion: Boolean) {
+    AnimatedContent(
+        targetState = title,
+        transitionSpec = {
+            if (reduceMotion) fadeIn(tween(0)) togetherWith fadeOut(tween(0))
+            else (fadeIn(tween(240)) + slideInVertically(tween(240)) { it / 3 }) togetherWith
+                (fadeOut(tween(120)) + slideOutVertically(tween(120)) { -it / 3 })
+        },
+        label = "title"
+    ) { t ->
+        Text(t, style = style, color = color)
+    }
+}
+
+@Composable
+private fun Header(
+    title: String,
+    collapse: () -> Float,
+    pull: () -> Float,
+    reduceMotion: Boolean,
+    onRestart: () -> Unit
+) {
+    val cs = MaterialTheme.colorScheme
+    val density = LocalDensity.current
+    val statusPx = WindowInsets.statusBars.getTop(density).toFloat()
+    val collapsedBandPx = with(density) { 56.dp.toPx() }
+    val bottomRadiusPx = with(density) { 28.dp.toPx() }
+    val maxStretchPx = with(density) { 14.dp.toPx() }
+    val background = cs.surfaceContainer
+
+    Box(
         Modifier
             .fillMaxWidth()
-            .statusBarsPadding()
-            .padding(start = 24.dp, end = 12.dp, top = 24.dp, bottom = 14.dp),
-        verticalAlignment = Alignment.Top
-    ) {
-        Column(Modifier.weight(1f)) {
-            Text(
-                "SoundMod",
-                style = MaterialTheme.typography.displaySmall,
-                color = MaterialTheme.colorScheme.primary
-            )
-            AnimatedContent(
-                targetState = title,
-                transitionSpec = {
-                    if (reduceMotion) fadeIn(tween(0)) togetherWith fadeOut(tween(0))
-                    else (fadeIn(tween(240)) + slideInVertically(tween(240)) { it / 3 }) togetherWith
-                        (fadeOut(tween(120)) + slideOutVertically(tween(120)) { -it / 3 })
-                },
-                label = "title"
-            ) { t ->
-                Text(
-                    t,
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            // Bildirilen yükseklik kaydırmayla geniş → dar arasında değişir (yalnızca yerleşim aşaması okur)
+            .layout { measurable, constraints ->
+                val placeable = measurable.measure(constraints)
+                val c = collapse().coerceIn(0f, 1f)
+                val collapsedH = statusPx + collapsedBandPx
+                val h = (placeable.height + (collapsedH - placeable.height) * c).roundToInt()
+                layout(placeable.width, h) { placeable.place(0, 0) }
             }
-        }
-        FilledTonalIconButton(onClick = onRestart) {
-            Icon(Icons.Default.Refresh, contentDescription = "Sistem Arayüzünü yenile")
+            // Alt sınır: içerik yukarı kayarken yukarı çekilir, aşağı kayarken aşağı itilir; yanlar hafif daralır
+            .drawBehind {
+                val p = pull()
+                val inset = kotlin.math.abs(p) * 3.dp.toPx()
+                val bottom = (size.height - p * maxStretchPx).coerceAtLeast(bottomRadiusPx)
+                val rr = RoundRect(
+                    left = inset,
+                    top = 0f,
+                    right = size.width - inset,
+                    bottom = bottom,
+                    topLeftCornerRadius = CornerRadius.Zero,
+                    topRightCornerRadius = CornerRadius.Zero,
+                    bottomLeftCornerRadius = CornerRadius(bottomRadiusPx),
+                    bottomRightCornerRadius = CornerRadius(bottomRadiusPx)
+                )
+                drawPath(Path().apply { addRoundRect(rr) }, background)
+            }
+    ) {
+        Box(
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 24.dp)
+        ) {
+            // Geniş görünüm: uygulama adı büyük, altında sekme adı küçük; kaydırınca yukarı çekilip solar
+            Column(
+                Modifier
+                    .padding(top = 20.dp, bottom = 14.dp, end = 56.dp)
+                    .graphicsLayer {
+                        val c = collapse()
+                        translationY = -c * 46.dp.toPx() - pull() * 5.dp.toPx()
+                        alpha = (1f - c * 1.7f).coerceIn(0f, 1f)
+                    }
+            ) {
+                Text(
+                    "SoundMod",
+                    style = MaterialTheme.typography.displaySmall,
+                    color = cs.primary
+                )
+                TabTitle(title, MaterialTheme.typography.titleMedium, cs.onSurfaceVariant, reduceMotion)
+            }
+            // Dar görünüm: sekme adı, uygulama adının yerine aşağıdan yükselerek geçer
+            Box(
+                Modifier
+                    .align(Alignment.TopStart)
+                    .padding(top = 14.dp, end = 56.dp)
+                    .graphicsLayer {
+                        val c = collapse()
+                        alpha = ((c - 0.45f) * 2f).coerceIn(0f, 1f)
+                        translationY = (1f - c) * 26.dp.toPx() - pull() * 9.dp.toPx()
+                    }
+            ) {
+                TabTitle(title, MaterialTheme.typography.titleLarge, cs.onSurface, reduceMotion)
+            }
+            FilledTonalIconButton(
+                onClick = onRestart,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 20.dp)
+                    .graphicsLayer { translationY = -collapse() * 16.dp.toPx() }
+            ) {
+                Icon(Icons.Default.Refresh, contentDescription = "Sistem Arayüzünü yenile")
+            }
         }
     }
 }
@@ -386,7 +513,13 @@ private fun SoundsTab(
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                         Text("Root izni yok", style = MaterialTheme.typography.titleMedium)
                         Text("Ses değiştirmek için kök yöneticisinde SoundMod'a izin ver.", style = MaterialTheme.typography.bodyMedium)
-                        OutlinedButton(onClick = a.refresh) { Text("Yeniden dene") }
+                        Button(
+                            onClick = a.refresh,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.error,
+                                contentColor = MaterialTheme.colorScheme.onError
+                            )
+                        ) { Text("Yeniden dene") }
                     }
                 }
             }
@@ -912,6 +1045,28 @@ private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) 
                 }
             }
         }
+
+        // ---- Kulaklık ----
+        item { GroupHeader("Kulaklık") }
+        item {
+            Column(modifier = Modifier.staggerIn(3, listState)) {
+                SettingsCard(segmentShape(0, 1), container) {
+                    SwitchRow(
+                        "Kulaklık ses uyarısını kapat",
+                        "Yeniden başlatmadan sonra kulaklıkta sesi yükseltirken çıkan “yüksek ses kulaklarına zarar verebilir” " +
+                            "uyarısı gösterilmez. Anında geçerlidir, yeniden başlatma gerekmez.",
+                        state.noHpWarning, state.root == RootState.GRANTED, a.setNoHpWarning
+                    )
+                    Text(
+                        "Android'in kulak koruma (güvenli medya sesi) uyarısını devre dışı bırakır; uzun süre yüksek sesle " +
+                            "dinlemek işitmeye zarar verebilir. Vector kancası kullanır, ayrı bir KernelSU/Magisk modülü " +
+                            "gerekmez. Ses dozu (CSD) bildirimlerini değiştirmez.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
     }
 }
 
@@ -1114,7 +1269,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Gömülü", "Yüzen").forEachIndexed { i, t ->
+                        listOf("Geniş", "Kompakt").forEachIndexed { i, t ->
                             FilterChip(
                                 selected = state.navStyle == i,
                                 onClick = { a.setNavStyle(i) },
@@ -1173,7 +1328,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
         item {
             Text(
-                "SoundMod 0.9.0",
+                "SoundMod 0.10.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)

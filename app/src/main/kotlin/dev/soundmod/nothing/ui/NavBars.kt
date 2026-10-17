@@ -40,7 +40,7 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 /**
- * Gömülü alt çubuk: seçili sekme simge + yazıyla bir hap içinde gösterilir, diğerleri yalnızca simgedir.
+ * Geniş yüzen alt çubuk: seçili sekme simge + yazıyla bir hap içinde gösterilir, diğerleri yalnızca simgedir.
  * Sekme değişince seçili hap genişleyip eskisi daralır; vurgu bir yerden diğerine akıyormuş gibi görünür.
  */
 @Composable
@@ -57,8 +57,9 @@ fun ExpandingNavBar(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(32.dp),
-        color = cs.surfaceContainer,
-        tonalElevation = 2.dp
+        color = cs.surfaceContainerHigh,
+        tonalElevation = 3.dp,
+        shadowElevation = 12.dp
     ) {
         Row(
             Modifier.padding(8.dp),

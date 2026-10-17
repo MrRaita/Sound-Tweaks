@@ -17,8 +17,11 @@ ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler s
 - İsteğe bağlı "zorla çal" modu: kilit sesleri sessiz/titreşim modunda da duyulacak şekilde medya ses akışından çalınır.
 - Sistem Arayüzünü yeniden başlatma düğmesi (ilk kullanımda uyarı gösterir, uyarı kapatılabilir).
 - Tema: sistem, açık, koyu, OLED (saf siyah); Material You renkleri ya da 12 hazır palet.
-- Alt gezinti çubuğu için iki stil (gömülü: seçili sekme simge ve yazıyla genişleyen hap; yüzen: gölgeli, yalnızca
-  simgeli çubuk), sekme sırasını sürükle-bırak ile değiştirme ve sekmeleri gizleme.
+- Yüzen alt gezinti çubuğu, iki genişlikte (geniş: seçili sekme simge ve yazıyla genişleyen hap; kompakt: yalnızca
+  simgeler ve kayan vurgu), sekme sırasını sürükle-bırak ile değiştirme ve sekmeleri gizleme.
+- Kaydırma hızına bağlı çekme-itme efekti: çubuklar ve başlık yaylı biçimde gerilip sallanır; üst başlık aşağı
+  kaydırınca daralır ve uygulama adının yerine sekme adı geçer.
+- Kulaklıkta ses yükseltilirken gösterilen güvenli medya sesi (kulak koruma) uyarısını kapatma seçeneği.
 - Tanılama raporu (dosya izinleri, ayarlar, hook durumu, SELinux reddleri).
 
 ## Desteklenen sesler
@@ -71,6 +74,13 @@ bağlamıyla işaretlenir.
 Bağlam, uygulama her açıldığında ve her ses yazıldığında yeniden uygulanır. Sistem güncellemesi dosya bağlamlarını
 yeniden yazarsa uygulamanın bir kez açılması yeterlidir.
 
+### Kaydırma efektleri
+
+Kaydırma hareketi bir `NestedScrollConnection` ile izlenir ve −1..1 aralığında bir "çekme" değerine dönüştürülür;
+değer bırakılınca az sönümlü bir yayla sıfıra döner. Alt çubuk, başlığın alt sınırı ve liste satırları bu değeri
+yalnızca çizim aşamasında okur (yeniden oluşturma tetiklenmez). Başlığın daralması etkin sekmenin liste konumuna
+bağlıdır. "Animasyonları azalt" açıkken tüm efektler kapanır.
+
 ### Hook'lar
 
 libxposed API 101 ile yazılmıştır (`minApiVersion = targetApiVersion = 101`). Giriş sınıfı
@@ -79,12 +89,21 @@ libxposed API 101 ile yazılmıştır (`minApiVersion = targetApiVersion = 101`)
 | Süreç | Sınıf / metot | Amaç |
 |---|---|---|
 | `system_server` | `SoundEffectsHelper.getResourceFilePath` | Klavye ve dokunma sesi yollarını yönlendirir |
+| `system_server` | `SoundDoseHelper.checkSafeMediaVolume`, `checkSafeMediaVolume_l`, `raiseVolumeDisplaySafeMediaVolume` | Bayrak varken kulaklık ses uyarısını atlar |
 | SystemUI | `ScreenshotSoundProviderImpl.getScreenshotSound` | Ekran görüntüsü sesini değiştirir |
 | SystemUI | `KeyguardViewMediator.playSounds`, `playTrustedSound` | Yalnızca "zorla çal" modunda kilit seslerini çalar |
 
 Her hook ayrı bir `try/catch` içindedir; hata durumunda stok davranış sürer. Kilit sesleri varsayılanda stok
 mekanizmayla çalar: sistem `lock_sound`, `unlock_sound` ve `trusted_sound` ayarlarındaki yolu Sistem Arayüzü açılırken
 bir kez yükler. "Zorla çal" modu kapalıyken SystemUI'a hook eklenmez.
+
+### Kulaklık ses uyarısı
+
+Android, yeniden başlatmadan sonra kulaklıkta ses belirli bir seviyenin üzerine çıkarılırken bir uyarı gösterir
+(`AudioService.adjustStreamVolume` → `SoundDoseHelper.raiseVolumeDisplaySafeMediaVolume` → `checkSafeMediaVolume`).
+Seçenek açıldığında `/data/system/soundmod/.no_hp_warning` bayrağı oluşturulur; ilgili üç yöntem bayrak varken
+"ses güvenli" sonucunu döndürür ve uyarı hiç gösterilmez. Hook her çağrıda yalnızca bayrağın varlığına bakar, bu
+yüzden ayar anında geçerlidir ve ayrı bir `system.prop` modülü gerekmez. Ses dozu (CSD) bildirimleri değiştirilmez.
 
 ### Ses işleme
 

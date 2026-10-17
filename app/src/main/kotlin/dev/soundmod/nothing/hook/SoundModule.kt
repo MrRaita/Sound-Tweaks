@@ -32,15 +32,21 @@ class SoundModule : XposedModule() {
     @Volatile private var sysUiHooked = false
 
     override fun onSystemServerStarting(param: XposedModuleInterface.SystemServerStartingParam) {
-        val status = StringBuilder("system_server: ")
+        val parts = ArrayList<String>()
         try {
             hookSoundEffects(param.classLoader)
-            status.append("SoundEffectsHelper OK")
+            parts += "SoundEffectsHelper OK"
         } catch (t: Throwable) {
-            status.append("SoundEffectsHelper HATA: ${t.javaClass.simpleName}: ${t.message}")
+            parts += "SoundEffectsHelper HATA: ${t.javaClass.simpleName}: ${t.message}"
             log(Log.ERROR, TAG, "SoundEffectsHelper hook failed", t)
         }
-        writeStatus(SoundPaths.STATUS_SYSTEM, status.toString())
+        try {
+            parts += "GüvenliSes OK (${hookSafeVolume(param.classLoader)})"
+        } catch (t: Throwable) {
+            parts += "GüvenliSes HATA: ${t.javaClass.simpleName}: ${t.message}"
+            log(Log.ERROR, TAG, "SafeVolume hook failed", t)
+        }
+        writeStatus(SoundPaths.STATUS_SYSTEM, "system_server: ${parts.joinToString(", ")}")
     }
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
@@ -88,6 +94,38 @@ class SoundModule : XposedModule() {
                 orig
             }
         }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // system_server: kulaklık (güvenli medya sesi) uyarısı
+    // ---------------------------------------------------------------------------------------
+
+    /**
+     * Akış: AudioService.adjustStreamVolume → SoundDoseHelper.raiseVolumeDisplaySafeMediaVolume →
+     * checkSafeMediaVolume → checkSafeMediaVolume_l. Bayrak dosyası varken bu üçü "ses güvenli" (true) döner,
+     * böylece uyarı hiç gösterilmez. Bayrak yokken her şey stok çalışır. Her çağrıda tek bir dosya sorgusu yapılır.
+     */
+    private fun hookSafeVolume(cl: ClassLoader): String {
+        val clazz = Class.forName("com.android.server.audio.SoundDoseHelper", false, cl)
+        val check = clazz.declaredMethods.firstOrNull { it.name == "checkSafeMediaVolume" && it.parameterTypes.size == 3 }
+        val checkL = clazz.declaredMethods.firstOrNull { it.name == "checkSafeMediaVolume_l" && it.parameterTypes.size == 3 }
+        val raise = clazz.declaredMethods.firstOrNull {
+            it.name == "raiseVolumeDisplaySafeMediaVolume" && it.parameterTypes.size == 4
+        }
+        val targets = listOfNotNull(check, checkL, raise)
+        if (targets.isEmpty()) error("güvenli ses yöntemleri bulunamadı")
+
+        // Küçük yöntemler çağıranlarına satır içi derlenmiş olabilir: yalnızca ilgili yöntemler deopt edilir
+        clazz.declaredMethods
+            .filter { it !in targets && (it.name.contains("SafeMedia") || it.name.contains("willDisplay")) }
+            .forEach { runCatching { deoptimize(it) } }
+
+        for (m in targets) {
+            hook(m).intercept { chain ->
+                if (File(SoundPaths.NO_HP_WARNING_FLAG).exists()) true else chain.proceed()
+            }
+        }
+        return targets.joinToString("+") { it.name }
     }
 
     // ---------------------------------------------------------------------------------------

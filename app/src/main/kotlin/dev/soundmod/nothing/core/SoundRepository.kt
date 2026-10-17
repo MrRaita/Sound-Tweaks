@@ -70,6 +70,14 @@ class SoundRepository(private val ctx: Context) {
         )
     }
 
+    /** Kulaklık ses uyarısını kapatma bayrağı (hook her çağrıda dosyanın varlığına bakar). */
+    fun setNoHpWarning(on: Boolean): Root.Result {
+        val f = Root.q(SoundPaths.NO_HP_WARNING_FLAG)
+        return Root.run(
+            if (on) "touch $f && (chcon ${SoundPaths.CONTEXT} $f || true)" else "rm -f $f"
+        )
+    }
+
     /** Eski sürümlerden kalan, artık geçersiz yuva kayıtlarını (root gerektirmeden) unutur. */
     fun forget(slot: SoundSlot) {
         prefs.edit().remove("label_${slot.id}").remove("prev_${slot.id}").remove("srcpath_${slot.id}").apply()
