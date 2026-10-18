@@ -1,0 +1,94 @@
+name: APK derle (yeniden kullanılabilir)
+
+# Ön derleme ve kararlı sürüm akışları bunu çağırır; ikisi de aynı adımlarla ve aynı anahtarla imzalar.
+on:
+  workflow_call:
+    inputs:
+      require_signing:
+        description: İmza anahtarı yoksa derlemeyi başarısız say
+        type: boolean
+        default: false
+    outputs:
+      version:
+        description: app/build.gradle.kts içindeki versionName
+        value: ${{ jobs.build.outputs.version }}
+      signed:
+        description: Yayın anahtarıyla imzalandı mı
+        value: ${{ jobs.build.outputs.signed }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      signed: ${{ steps.keys.outputs.signed }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: 9.5.0
+
+      # Depoda gradle-wrapper.jar yoksa (ikili dosya) resmi sarmalayıcıyı üret
+      - name: Gradle sarmalayıcıyı hazırla
+        run: |
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            gradle wrapper --gradle-version 9.5.0
+          fi
+          chmod +x gradlew
+
+      - name: İmza anahtarını hazırla
+        id: keys
+        env:
+          KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
+          REQUIRE_SIGNING: ${{ inputs.require_signing }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "SIGNING_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "signed=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            if [ "$REQUIRE_SIGNING" = "true" ]; then
+              echo "::error::SIGNING_KEYSTORE_BASE64 tanımlı değil; kararlı sürüm yayın anahtarı olmadan derlenmez."
+              exit 1
+            fi
+            echo "::warning::SIGNING_KEYSTORE_BASE64 tanımlı değil; APK debug anahtarıyla imzalanacak (her derlemede farklı imza)."
+          fi
+
+      - name: Sürüm bilgisini oku
+        id: meta
+        run: |
+          VERSION=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -1)
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+      - name: APK derle
+        env:
+          SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
+          SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
+          SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+        run: ./gradlew assembleRelease --stacktrace
+
+      - name: APK'yı adlandır ve imzayı göster
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
+          cp "$APK" "SoundMod-${VERSION}.apk"
+          APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
+          "$APKSIGNER" verify --print-certs "SoundMod-${VERSION}.apk" | grep -i "SHA-256" || true
+
+      - name: APK'yı yükle
+        uses: actions/upload-artifact@v4
+        with:
+          name: SoundMod-apk
+          path: SoundMod-*.apk
+          if-no-files-found: error

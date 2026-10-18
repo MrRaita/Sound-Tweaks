@@ -1,0 +1,58 @@
+name: Ön derleme
+
+# Her push'ta otomatik çalışır; imzalı APK'yı artifact olarak yükler ve ön sürüm (pre-release) oluşturur.
+on:
+  push:
+    paths-ignore:
+      - "**.md"
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: prebuild-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    uses: ./.github/workflows/build-apk.yml
+    secrets: inherit
+
+  publish:
+    needs: build
+    # Yalnızca varsayılan dala yapılan push'larda sürüm sayfasına konur; PR ve diğer dallar sadece artifact üretir.
+    if: github.event_name == 'push' && github.ref_name == github.event.repository.default_branch
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: SoundMod-apk
+          path: dist
+
+      - name: Ön sürüm oluştur
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pre-${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          name: Ön sürüm ${{ needs.build.outputs.version }} (derleme ${{ github.run_number }})
+          body: |
+            Otomatik ön derleme. Kararlı sürüm değildir.
+            Commit: ${{ github.sha }}
+            İmza: ${{ needs.build.outputs.signed == 'true' && 'yayın anahtarı' || 'debug anahtarı (yayın anahtarı tanımlı değil)' }}
+          prerelease: true
+          files: dist/SoundMod-*.apk
+
+      - name: Eski ön sürümleri temizle (son 10 kalsın)
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName,isPrerelease \
+            --jq '[.[] | select(.isPrerelease and (.tagName | startswith("pre-")))] | .[10:] | .[].tagName' |
+          while read -r tag; do
+            gh release delete "$tag" --repo "$GITHUB_REPOSITORY" --cleanup-tag --yes
+          done
