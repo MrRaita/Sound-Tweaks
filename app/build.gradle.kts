@@ -43,7 +43,7 @@ android {
 
 dependencies {
     // libxposed: API'yi framework (Vector) çalışma anında sağlar, APK'ya girmez
-    compileOnly("io.github.libxposed:api:101.0.1")
+    compileOnly("io.github.libxposed:api:102.0.0")
 
     implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-compose:1.12.1")
