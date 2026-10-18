@@ -28,13 +28,13 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: SoundMod-apk
           path: dist
 
       - name: Ön sürüm oluştur
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           tag_name: pre-${{ github.run_number }}
           target_commitish: ${{ github.sha }}
