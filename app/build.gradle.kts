@@ -14,15 +14,29 @@ android {
         targetSdk = 36
         // Her derlemede artsın diye CI çalışma numarasını kullanır
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.10.0"
+        versionName = "0.11.0"
+    }
+
+    // Yayın imzası: ön derleme ve kararlı sürüm aynı anahtarla imzalanır. Anahtar CI'da ortam değişkenleriyle
+    // verilir (SIGNING_KEYSTORE_FILE, SIGNING_KEYSTORE_PASSWORD, SIGNING_KEY_ALIAS, SIGNING_KEY_PASSWORD).
+    // Tanımlı değilse (yerel derleme, çatal depo) debug anahtarına düşülür.
+    val releaseKeystore = System.getenv("SIGNING_KEYSTORE_FILE")?.takeIf { it.isNotBlank() && file(it).exists() }
+    signingConfigs {
+        if (releaseKeystore != null) {
+            create("release") {
+                storeFile = file(releaseKeystore)
+                storePassword = System.getenv("SIGNING_KEYSTORE_PASSWORD")
+                keyAlias = System.getenv("SIGNING_KEY_ALIAS")
+                keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
             // Hook sınıflarını R8 bozmasın diye küçültme kapalı
             isMinifyEnabled = false
-            // Sürüm APK'sı debug anahtarıyla imzalanır, doğrudan kurulabilir
-            signingConfig = signingConfigs.getByName("debug")
+            signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "debug")
         }
     }
 

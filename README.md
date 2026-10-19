@@ -19,8 +19,8 @@ ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler s
 - Tema: sistem, açık, koyu, OLED (saf siyah); Material You renkleri ya da 12 hazır palet.
 - Yüzen alt gezinti çubuğu, iki genişlikte (geniş: seçili sekme simge ve yazıyla genişleyen hap; kompakt: yalnızca
   simgeler ve kayan vurgu), sekme sırasını sürükle-bırak ile değiştirme ve sekmeleri gizleme.
-- Kaydırma hızına bağlı çekme-itme efekti: çubuklar ve başlık yaylı biçimde gerilip sallanır; üst başlık aşağı
-  kaydırınca daralır ve uygulama adının yerine sekme adı geçer.
+- Kaydırma hızına bağlı çekme-itme efekti liste satırlarında; üst başlık aşağı kaydırınca daralır ve uygulama
+  adının yerine sekme adı geçer.
 - Kulaklıkta ses yükseltilirken gösterilen güvenli medya sesi (kulak koruma) uyarısını kapatma seçeneği.
 - Tanılama raporu (dosya izinleri, ayarlar, hook durumu, SELinux reddleri).
 
@@ -77,9 +77,9 @@ yeniden yazarsa uygulamanın bir kez açılması yeterlidir.
 ### Kaydırma efektleri
 
 Kaydırma hareketi bir `NestedScrollConnection` ile izlenir ve −1..1 aralığında bir "çekme" değerine dönüştürülür;
-değer bırakılınca az sönümlü bir yayla sıfıra döner. Alt çubuk, başlığın alt sınırı ve liste satırları bu değeri
-yalnızca çizim aşamasında okur (yeniden oluşturma tetiklenmez). Başlığın daralması etkin sekmenin liste konumuna
-bağlıdır. "Animasyonları azalt" açıkken tüm efektler kapanır.
+değer bırakılınca az sönümlü bir yayla sıfıra döner. Liste satırları bu değeri yalnızca çizim aşamasında okur
+(yeniden oluşturma tetiklenmez). Üst başlık iki durumludur (geniş/dar); kaydırma eşiği aşılınca yaylı bir geçişle
+daralır. "Animasyonları azalt" açıkken efektler kapanır.
 
 ### Hook'lar
 
@@ -102,7 +102,8 @@ bir kez yükler. "Zorla çal" modu kapalıyken SystemUI'a hook eklenmez.
 Android, yeniden başlatmadan sonra kulaklıkta ses belirli bir seviyenin üzerine çıkarılırken bir uyarı gösterir
 (`AudioService.adjustStreamVolume` → `SoundDoseHelper.raiseVolumeDisplaySafeMediaVolume` → `checkSafeMediaVolume`).
 Seçenek açıldığında `/data/system/soundmod/.no_hp_warning` bayrağı oluşturulur; ilgili üç yöntem bayrak varken
-"ses güvenli" sonucunu döndürür ve uyarı hiç gösterilmez. Hook her çağrıda yalnızca bayrağın varlığına bakar, bu
+"uyarı gerekmiyor" (`false`) sonucunu döndürür ve uyarı hiç gösterilmez. Bu sürümde dönüş değerleri bayt koduyla
+doğrulanmıştır: `true`, sesin güvenli seviyeye kırpılması anlamına gelir. Hook her çağrıda yalnızca bayrağın varlığına bakar, bu
 yüzden ayar anında geçerlidir ve ayrı bir `system.prop` modülü gerekmez. Ses dozu (CSD) bildirimleri değiştirilmez.
 
 ### Ses işleme
@@ -140,13 +141,49 @@ gradle wrapper --gradle-version 9.5.0   # bir kez
 ./gradlew assembleRelease
 ```
 
-Sürüm APK'sı debug anahtarıyla imzalanır. `versionName` `app/build.gradle.kts` içinde, `versionCode` CI çalışma
-numarasından gelir.
+`versionName` `app/build.gradle.kts` içindedir; `versionCode` CI çalışma numarasından gelir. Yerel derlemede imza
+anahtarı verilmezse sürüm APK'sı debug anahtarıyla imzalanır.
 
-### CI
+## CI/CD
 
-`.github/workflows/build.yml` her `main`/`master` push'unda sarmalayıcıyı üretir, APK'yı derler, `SoundMod-apk`
-çıktısı olarak yükler ve `build-<çalışma numarası>` adlı bir ön sürüm (pre-release) oluşturur.
+| Akış | Tetikleyici | Çıktı |
+|---|---|---|
+| `prebuild.yml` (Ön derleme) | Her push, PR ve elle | İmzalı APK (artifact) ve varsayılan dalda `pre-<çalışma no>` etiketli ön sürüm (son 10 saklanır) |
+| `release.yml` (Kararlı sürüm) | Yalnızca elle | `v<versionName>` etiketli kararlı sürüm; imza anahtarı yoksa başarısız olur, aynı sürüm numarası varsa durur |
+| `build-apk.yml` | Yukarıdakiler çağırır | Ortak derleme ve imzalama adımları |
+| `codeql.yml` | Push, PR, haftalık | Java/Kotlin ve GitHub Actions için CodeQL analizi (`security-and-quality`) |
+| `dependabot.yml` | Haftalık | Gradle ve GitHub Actions sürüm güncellemeleri |
+
+### İmza anahtarı
+
+Ön sürümler ve kararlı sürümler aynı anahtarla imzalanır; bu sayede biri diğerinin üzerine kurulabilir. Anahtar depoya
+konmaz, **Settings → Secrets and variables → Actions** altına dört gizli değişken olarak eklenir:
+
+| Gizli değişken | İçerik |
+|---|---|
+| `SIGNING_KEYSTORE_BASE64` | Keystore dosyasının base64 hâli |
+| `SIGNING_KEYSTORE_PASSWORD` | Keystore parolası |
+| `SIGNING_KEY_ALIAS` | Anahtar takma adı |
+| `SIGNING_KEY_PASSWORD` | Anahtar parolası |
+
+Anahtar üretme ve base64'e çevirme:
+
+```sh
+keytool -genkeypair -v -keystore soundmod.jks -alias soundmod \
+  -keyalg RSA -keysize 4096 -validity 10000
+base64 -w0 soundmod.jks    # çıktı SIGNING_KEYSTORE_BASE64 olarak kaydedilir
+```
+
+Keystore dosyası ve parolalar yedeklenmelidir; kaybedilirse mevcut kurulumların üzerine güncelleme yapılamaz.
+`SIGNING_KEYSTORE_BASE64` tanımlı değilse ön derleme debug anahtarıyla imzalanır (her derlemede farklı imza) ve
+uyarı verir. Derleme sonunda `apksigner` sertifika özeti günlüğe yazılır; iki sürümün aynı anahtarla imzalandığı bu
+özetle doğrulanabilir.
+
+### Kararlı sürüm çıkarma
+
+1. `app/build.gradle.kts` içinde `versionName` artırılır ve push edilir.
+2. **Actions → Kararlı sürüm → Run workflow** çalıştırılır (isteğe bağlı sürüm notu girilebilir).
+3. APK, `v<versionName>` etiketiyle **Releases** sayfasında kararlı sürüm olarak yayımlanır.
 
 ## Proje yapısı
 

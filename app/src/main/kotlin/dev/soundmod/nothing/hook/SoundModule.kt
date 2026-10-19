@@ -102,8 +102,12 @@ class SoundModule : XposedModule() {
 
     /**
      * Akış: AudioService.adjustStreamVolume → SoundDoseHelper.raiseVolumeDisplaySafeMediaVolume →
-     * checkSafeMediaVolume → checkSafeMediaVolume_l. Bayrak dosyası varken bu üçü "ses güvenli" (true) döner,
-     * böylece uyarı hiç gösterilmez. Bayrak yokken her şey stok çalışır. Her çağrıda tek bir dosya sorgusu yapılır.
+     * checkSafeMediaVolume → checkSafeMediaVolume_l.
+     *
+     * Dönüş değerleri bu sürümde (bayt koduyla doğrulandı) şu anlamdadır: checkSafeMediaVolume(_l) = "uyarı gerekli /
+     * ses güvenli seviyeyi aşıyor" ise true; raiseVolumeDisplaySafeMediaVolume = uyarı gösterildiyse true. true
+     * dönüldüğünde AudioService sesi güvenli indekse kırpar (ses tuşu çalışmaz). Bu yüzden bayrak varken üçü de
+     * false döner: uyarı yok, ses normal artar. Bayrak yokken stok çalışır. Her çağrıda tek bir dosya sorgusu yapılır.
      */
     private fun hookSafeVolume(cl: ClassLoader): String {
         val clazz = Class.forName("com.android.server.audio.SoundDoseHelper", false, cl)
@@ -122,7 +126,7 @@ class SoundModule : XposedModule() {
 
         for (m in targets) {
             hook(m).intercept { chain ->
-                if (File(SoundPaths.NO_HP_WARNING_FLAG).exists()) true else chain.proceed()
+                if (File(SoundPaths.NO_HP_WARNING_FLAG).exists()) false else chain.proceed()
             }
         }
         return targets.joinToString("+") { it.name }

@@ -20,6 +20,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.snap
@@ -147,6 +148,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.delay
 import dev.soundmod.nothing.core.RootInfo
 import dev.soundmod.nothing.core.SoundCatalog
@@ -238,17 +241,30 @@ fun SoundModScreen(
         }
     }
 
-    // Üst başlığın daralması: etkin sekmenin listesinin kaydırma konumuna bağlıdır; gevşek yayla izlenir
+    // Üst başlık iki durumludur (geniş / dar): kaydırma eşiği aşılınca yaylı bir geçişle daralır, başa dönülünce açılır.
+    // Eşikler arasında (histerezis) durum değişmez; başlık yarı daralmış bir ara halde kalmaz.
     val collapse = remember { Animatable(0f) }
-    val collapseRange = with(density) { 56.dp.toPx() }
+    val collapseHigh = with(density) { 24.dp.toPx() }
+    val collapseLow = with(density) { 6.dp.toPx() }
     LaunchedEffect(current, state.reduceMotion) {
+        var last = 0f
         snapshotFlow {
             val ls = listStates[current]
-            if (ls.firstVisibleItemIndex > 0) 1f else (ls.firstVisibleItemScrollOffset / collapseRange).coerceIn(0f, 1f)
-        }.collectLatest { target ->
-            if (state.reduceMotion) collapse.snapTo(target)
-            else collapse.animateTo(target, spring(dampingRatio = 0.62f, stiffness = 380f))
+            if (ls.firstVisibleItemIndex > 0) Float.MAX_VALUE else ls.firstVisibleItemScrollOffset.toFloat()
         }
+            .map { offset ->
+                last = when {
+                    offset > collapseHigh -> 1f
+                    offset < collapseLow -> 0f
+                    else -> last
+                }
+                last
+            }
+            .distinctUntilChanged()
+            .collectLatest { target ->
+                if (state.reduceMotion) collapse.snapTo(target)
+                else collapse.animateTo(target, spring(dampingRatio = 0.85f, stiffness = 450f))
+            }
     }
     val collapseFn = remember(collapse) { { collapse.value } }
 
@@ -270,7 +286,7 @@ fun SoundModScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             topBar = {
                 Column {
-                    Header(titles[current], collapseFn, pullFn, state.reduceMotion, onRestartClick)
+                    Header(titles[current], collapseFn, state.reduceMotion, onRestartClick)
                     if (state.busy) {
                         if (state.reduceMotion) LinearProgressIndicator(Modifier.fillMaxWidth())
                         else LinearWavyProgressIndicator(Modifier.fillMaxWidth())
@@ -311,7 +327,6 @@ fun SoundModScreen(
                     .align(Alignment.BottomCenter)
                     .navigationBarsPadding()
                     .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
-                    .elasticBar(pullFn)
                 if (state.navStyle == 1) {
                     FloatingNavBar(
                         tabs = visibleTabs,
@@ -384,7 +399,6 @@ private fun TabTitle(title: String, style: TextStyle, color: Color, reduceMotion
 private fun Header(
     title: String,
     collapse: () -> Float,
-    pull: () -> Float,
     reduceMotion: Boolean,
     onRestart: () -> Unit
 ) {
@@ -392,14 +406,14 @@ private fun Header(
     val density = LocalDensity.current
     val statusPx = WindowInsets.statusBars.getTop(density).toFloat()
     val collapsedBandPx = with(density) { 56.dp.toPx() }
-    val bottomRadiusPx = with(density) { 28.dp.toPx() }
-    val maxStretchPx = with(density) { 14.dp.toPx() }
-    val background = cs.surfaceContainer
+    val bigTitle = MaterialTheme.typography.displaySmall
+    // Dar görünümde sekme adı, uygulama adıyla aynı yazı tipi ve kalınlıkta, yalnızca biraz küçük
+    val compactTitle = bigTitle.copy(fontSize = 30.sp, lineHeight = 36.sp)
 
     Box(
         Modifier
             .fillMaxWidth()
-            // Bildirilen yükseklik kaydırmayla geniş → dar arasında değişir (yalnızca yerleşim aşaması okur)
+            // Bildirilen yükseklik geniş ↔ dar arasında değişir (yalnızca yerleşim aşaması okur)
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(constraints)
                 val c = collapse().coerceIn(0f, 1f)
@@ -407,23 +421,10 @@ private fun Header(
                 val h = (placeable.height + (collapsedH - placeable.height) * c).roundToInt()
                 layout(placeable.width, h) { placeable.place(0, 0) }
             }
-            // Alt sınır: içerik yukarı kayarken yukarı çekilir, aşağı kayarken aşağı itilir; yanlar hafif daralır
-            .drawBehind {
-                val p = pull()
-                val inset = kotlin.math.abs(p) * 3.dp.toPx()
-                val bottom = (size.height - p * maxStretchPx).coerceAtLeast(bottomRadiusPx)
-                val rr = RoundRect(
-                    left = inset,
-                    top = 0f,
-                    right = size.width - inset,
-                    bottom = bottom,
-                    topLeftCornerRadius = CornerRadius.Zero,
-                    topRightCornerRadius = CornerRadius.Zero,
-                    bottomLeftCornerRadius = CornerRadius(bottomRadiusPx),
-                    bottomRightCornerRadius = CornerRadius(bottomRadiusPx)
-                )
-                drawPath(Path().apply { addRoundRect(rr) }, background)
-            }
+            .background(
+                cs.surfaceContainer,
+                RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
+            )
     ) {
         Box(
             Modifier
@@ -437,29 +438,25 @@ private fun Header(
                     .padding(top = 20.dp, bottom = 14.dp, end = 56.dp)
                     .graphicsLayer {
                         val c = collapse()
-                        translationY = -c * 46.dp.toPx() - pull() * 5.dp.toPx()
+                        translationY = -c * 46.dp.toPx()
                         alpha = (1f - c * 1.7f).coerceIn(0f, 1f)
                     }
             ) {
-                Text(
-                    "SoundMod",
-                    style = MaterialTheme.typography.displaySmall,
-                    color = cs.primary
-                )
+                Text("SoundMod", style = bigTitle, color = cs.primary)
                 TabTitle(title, MaterialTheme.typography.titleMedium, cs.onSurfaceVariant, reduceMotion)
             }
             // Dar görünüm: sekme adı, uygulama adının yerine aşağıdan yükselerek geçer
             Box(
                 Modifier
                     .align(Alignment.TopStart)
-                    .padding(top = 14.dp, end = 56.dp)
+                    .padding(top = 10.dp, end = 56.dp)
                     .graphicsLayer {
                         val c = collapse()
                         alpha = ((c - 0.45f) * 2f).coerceIn(0f, 1f)
-                        translationY = (1f - c) * 26.dp.toPx() - pull() * 9.dp.toPx()
+                        translationY = (1f - c) * 26.dp.toPx()
                     }
             ) {
-                TabTitle(title, MaterialTheme.typography.titleLarge, cs.onSurface, reduceMotion)
+                TabTitle(title, compactTitle, cs.primary, reduceMotion)
             }
             FilledTonalIconButton(
                 onClick = onRestart,
@@ -1098,7 +1095,7 @@ private fun SlotNormRow(
         colors = CardDefaults.cardColors(containerColor = container),
         modifier = modifier.fillMaxWidth()
     ) {
-        Column(Modifier.animateContentSize()) {
+        Column {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -1120,7 +1117,11 @@ private fun SlotNormRow(
                     modifier = Modifier.graphicsLayer { rotationZ = rotation }
                 )
             }
-            AnimatedVisibility(visible = open) {
+            AnimatedVisibility(
+                visible = open,
+                enter = expandVertically(tween(220, easing = FastOutSlowInEasing)) + fadeIn(tween(160)),
+                exit = shrinkVertically(tween(170, easing = FastOutSlowInEasing)) + fadeOut(tween(90))
+            ) {
                 Column(
                     Modifier.padding(start = 20.dp, end = 20.dp, bottom = 16.dp),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -1319,16 +1320,13 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         "Kilit ve ekran görüntüsü olaylarını rapora yazar. Kapalıyken arka planda hiçbir şey yazılmaz.",
                         state.debugLog, state.root == RootState.GRANTED, a.setDebugLog
                     )
-                    OutlinedButton(onClick = a.showIntro, modifier = Modifier.fillMaxWidth()) {
-                        Text("Başlangıç bilgisini yeniden göster")
-                    }
                 }
             }
         }
 
         item {
             Text(
-                "SoundMod 0.10.0",
+                "SoundMod 0.11.0",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
@@ -1370,7 +1368,7 @@ private fun StatusCard(
         colors = CardDefaults.cardColors(containerColor = container),
         modifier = Modifier.fillMaxWidth()
     ) {
-        Column(Modifier.animateContentSize()) {
+        Column {
             Row(
                 Modifier
                     .fillMaxWidth()
@@ -1384,15 +1382,14 @@ private fun StatusCard(
                 Spacer(Modifier.width(10.dp))
                 Column(Modifier.weight(1f)) {
                     Text(title, style = MaterialTheme.typography.titleMedium)
-                    if (!expanded) {
-                        Text(
-                            summary,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
+                    // Özet satırı her durumda görünür: başlık yüksekliği sabit kalır, kapanırken sıçrama olmaz
+                    Text(
+                        summary,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
                 }
                 Icon(
                     Icons.Default.KeyboardArrowDown,
@@ -1400,7 +1397,11 @@ private fun StatusCard(
                     modifier = Modifier.graphicsLayer { rotationZ = rotation }
                 )
             }
-            AnimatedVisibility(visible = expanded) {
+            AnimatedVisibility(
+                visible = expanded,
+                enter = expandVertically(tween(220, easing = FastOutSlowInEasing)) + fadeIn(tween(160)),
+                exit = shrinkVertically(tween(170, easing = FastOutSlowInEasing)) + fadeOut(tween(90))
+            ) {
                 Column(
                     Modifier.padding(start = 20.dp, end = 20.dp, bottom = 20.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)

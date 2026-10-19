@@ -98,19 +98,6 @@ class PullPhysics(private val scope: CoroutineScope) {
 }
 
 /**
- * Çubuk bükülmesi. İçerik yukarı kayarken çubuğun üstü yukarı uzar, altı yukarı çekilip daralır; aşağı kayarken
- * tersi olur. Sönümü az yay sayesinde bırakınca taşıp sallanır.
- */
-fun Modifier.elasticBar(pull: () -> Float): Modifier = this.graphicsLayer {
-    val p = pull()
-    val a = abs(p)
-    scaleY = 1f + a * 0.16f
-    scaleX = 1f - a * 0.025f
-    transformOrigin = TransformOrigin(0.5f, if (p >= 0f) 1f else 0f)
-    translationY = -p * 12.dp.toPx()
-}
-
-/**
  * Liste satırları için çekme-itme: ekrana girerken kaydırma yönünden az sönümlü bir yayla gelir (aşırı salınım
  * taşırır), kaydırma sürerken de satırlar yönün tersine gecikip geri sallanır. Her satırın genliği biraz farklıdır;
  * böylece hareket tek parça değil, dalgalı ve kaotik görünür.
