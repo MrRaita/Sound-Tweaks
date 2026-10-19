@@ -10,6 +10,7 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
+import dev.soundmod.nothing.BuildConfig
 import dev.soundmod.nothing.core.SoundPaths
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
@@ -204,7 +205,7 @@ class SoundModule : XposedModule() {
             val am = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
             if (am.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) return false // medya sesi kapalı: duyulmaz
             val ok = ForcePlayer.play(path)
-            if (File(SoundPaths.DEBUG_FLAG).exists()) {
+            if (BuildConfig.VERBOSE_LOG && File(SoundPaths.DEBUG_FLAG).exists()) {
                 putGlobal(
                     SoundPaths.SYSUI_LAST_KEY,
                     "$kind: ${if (ok) "SoundPool çalındı" else "stok davranışa düşüldü"} [${ForcePlayer.lastInfo}] (${System.currentTimeMillis()})"

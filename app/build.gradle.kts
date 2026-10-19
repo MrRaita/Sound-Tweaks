@@ -14,7 +14,9 @@ android {
         targetSdk = 36
         // Her derlemede artsın diye CI çalışma numarasını kullanır
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.11.1"
+        versionName = "0.11.2"
+        // Ayrıntılı olay kaydı yalnızca ön derlemede (SOUNDMOD_VERBOSE=true); kararlı sürümde ve yerelde yok
+        buildConfigField("boolean", "VERBOSE_LOG", (System.getenv("SOUNDMOD_VERBOSE") == "true").toString())
     }
 
     // Yayın imzası: ön derleme ve kararlı sürüm aynı anahtarla imzalanır. Anahtar CI'da ortam değişkenleriyle
@@ -30,6 +32,10 @@ android {
                 keyPassword = System.getenv("SIGNING_KEY_PASSWORD")
             }
         }
+    }
+
+    buildFeatures {
+        buildConfig = true
     }
 
     buildTypes {

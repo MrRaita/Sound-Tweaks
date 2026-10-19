@@ -8,6 +8,10 @@ on:
         description: İmza anahtarı yoksa derlemeyi başarısız say
         type: boolean
         default: false
+      verbose_log:
+        description: Ayrıntılı olay kaydı özelliğini derlemeye kat (yalnızca ön derleme)
+        type: boolean
+        default: false
     outputs:
       version:
         description: app/build.gradle.kts içindeki versionName
@@ -33,7 +37,7 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - uses: gradle/actions/setup-gradle@v4
+      - uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         with:
           gradle-version: 9.5.0
 
@@ -75,6 +79,7 @@ jobs:
           SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
+          SOUNDMOD_VERBOSE: ${{ inputs.verbose_log }}
         run: ./gradlew assembleRelease --stacktrace
 
       - name: APK'yı adlandır ve imzayı göster

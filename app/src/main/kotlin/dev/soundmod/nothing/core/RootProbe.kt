@@ -1,5 +1,7 @@
 package dev.soundmod.nothing.core
 
+import dev.soundmod.nothing.BuildConfig
+
 /** Root yöneticisi ve sistem hakkında kısa bilgi (Ayarlar'daki Root kartı) */
 data class RootInfo(
     val manager: String = "",
@@ -32,6 +34,7 @@ object RootProbe {
         val script = """
             echo "uid=${'$'}(id -u)"
             if [ "${'$'}(id -u)" = "0" ]; then
+              ${if (BuildConfig.VERBOSE_LOG) "" else "rm -f " + Root.q(SoundPaths.DEBUG_FLAG) + "; settings delete global " + SoundPaths.SYSUI_LAST_KEY + " >/dev/null 2>&1"}
               rm -f ${Root.q(SoundPaths.BASE + "/.status_system")} ${Root.q(SoundPaths.OLD_HP_FLAG)}
               rm -f ${Root.q(SoundPaths.OVERRIDE_DIR)}/lock.* ${Root.q(SoundPaths.OVERRIDE_DIR)}/unlock.* ${Root.q(SoundPaths.OVERRIDE_DIR)}/trusted.*
               mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && chown -R system:system $b && chmod -R 755 $b && (chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b)

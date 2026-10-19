@@ -18,6 +18,8 @@ permissions:
 jobs:
   build:
     uses: ./.github/workflows/build-apk.yml
+    with:
+      verbose_log: true
     secrets: inherit
 
   publish:

@@ -2,6 +2,7 @@
 
 package dev.soundmod.nothing.ui
 
+import dev.soundmod.nothing.BuildConfig
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -118,6 +119,7 @@ import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -230,19 +232,6 @@ fun SoundModScreen(
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
 
-    // Çekme-itme: kaydırma hızı çubukları ve satırları yaylı biçimde gerer, bırakınca taşıp sallanırlar
-    val physics = remember { PullPhysics(scope) }
-    physics.enabled = !state.reduceMotion
-    val pullFn = remember(physics) { { physics.pull.value } }
-    val nested = remember(physics) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                physics.onDelta(available.y)
-                return Offset.Zero
-            }
-        }
-    }
-
     // Üst başlık iki durumludur (geniş / dar): kaydırma eşiği aşılınca yaylı bir geçişle daralır, başa dönülünce açılır.
     // Eşikler arasında (histerezis) durum değişmez; başlık yarı daralmış bir ara halde kalmaz.
     val collapse = remember { Animatable(0f) }
@@ -278,17 +267,20 @@ fun SoundModScreen(
     // Çubuklar listenin üstünde yüzer; listeler ekranın altına kadar uzanır, son satırlar çubuğun altında kalmaz
     val navInset = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
     val listBottom = 96.dp + navInset
+    // Başlık listenin üstüne biner (köşelerin ardında liste görünür); listeler genişlemiş başlık kadar boşlukla başlar
+    var headerPx by remember { mutableIntStateOf(0) }
+    val headerInset = with(density) { headerPx.toDp() }
 
     CompositionLocalProvider(
         LocalReduceMotion provides state.reduceMotion,
         LocalListBottomPadding provides listBottom,
-        LocalPull provides pullFn
+        LocalListTopPadding provides headerInset
     ) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.surface,
             topBar = {
                 Column {
-                    Header(titles[current], collapseFn, state.reduceMotion, onRestartClick)
+                    Header(titles[current], collapseFn, state.reduceMotion, onRestartClick) { headerPx = it }
                     if (state.busy) {
                         if (state.reduceMotion) LinearProgressIndicator(Modifier.fillMaxWidth())
                         else LinearWavyProgressIndicator(Modifier.fillMaxWidth())
@@ -299,9 +291,7 @@ fun SoundModScreen(
         ) { pad ->
             Box(
                 Modifier
-                    .padding(top = pad.calculateTopPadding())
                     .fillMaxSize()
-                    .nestedScroll(nested)
             ) {
                 AnimatedContent(
                     targetState = current,
@@ -402,7 +392,8 @@ private fun Header(
     title: String,
     collapse: () -> Float,
     reduceMotion: Boolean,
-    onRestart: () -> Unit
+    onRestart: () -> Unit,
+    onExpandedHeight: (Int) -> Unit
 ) {
     val cs = MaterialTheme.colorScheme
     val density = LocalDensity.current
@@ -434,6 +425,7 @@ private fun Header(
         Box(
             Modifier
                 .fillMaxWidth()
+                .onSizeChanged { onExpandedHeight(it.height) }
                 .statusBarsPadding()
                 .padding(horizontal = 24.dp)
         ) {
@@ -502,7 +494,7 @@ private fun SoundsTab(
 
     LazyColumn(
         state = listState,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = LocalListBottomPadding.current),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = LocalListTopPadding.current, bottom = LocalListBottomPadding.current),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         if (state.root == RootState.DENIED) {
@@ -605,7 +597,7 @@ private fun SoundsTab(
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
                 )
-                CompositionLocalProvider(LocalListBottomPadding provides 24.dp) {
+                CompositionLocalProvider(LocalListBottomPadding provides 24.dp, LocalListTopPadding provides 0.dp) {
                     SoundList(
                         sounds = state.library,
                         loading = state.libraryLoading,
@@ -742,7 +734,7 @@ private fun SoundList(
         }
     }
 
-    Column(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize().padding(top = LocalListTopPadding.current)) {
         Row(
             Modifier.padding(start = 28.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -903,7 +895,7 @@ private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) 
 
     LazyColumn(
         state = listState,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = LocalListBottomPadding.current),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = LocalListTopPadding.current, bottom = LocalListBottomPadding.current),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         // ---- Sistem ses anahtarları ----
@@ -1178,7 +1170,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
     LazyColumn(
         state = listState,
-        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 0.dp, bottom = LocalListBottomPadding.current),
+        contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = LocalListTopPadding.current, bottom = LocalListBottomPadding.current),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         // ---- Durum ----
@@ -1320,18 +1312,20 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         enabled = state.root == RootState.GRANTED,
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("Tanı raporu oluştur") }
-                    SwitchRow(
-                        "Ayrıntılı olay kaydı",
-                        "Kilit ve ekran görüntüsü olaylarını rapora yazar. Kapalıyken arka planda hiçbir şey yazılmaz.",
-                        state.debugLog, state.root == RootState.GRANTED, a.setDebugLog
-                    )
+                    if (BuildConfig.VERBOSE_LOG) {
+                        SwitchRow(
+                            "Ayrıntılı olay kaydı (ön sürüm)",
+                            "Kilit ve ekran görüntüsü olaylarını rapora yazar. Yalnızca ön sürümlerde bulunur.",
+                            state.debugLog, state.root == RootState.GRANTED, a.setDebugLog
+                        )
+                    }
                 }
             }
         }
 
         item {
             Text(
-                "SoundMod 0.11.0",
+                "SoundMod 0.11.2",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)

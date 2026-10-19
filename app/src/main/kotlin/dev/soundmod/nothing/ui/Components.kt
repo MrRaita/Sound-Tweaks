@@ -31,15 +31,14 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.TransformOrigin
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlin.math.abs
-import kotlin.math.sin
 
 /** Listelerin alt boşluğu: yüzen çubukta çubuğun altında kalmasın diye büyür. */
 val LocalListBottomPadding = compositionLocalOf { 24.dp }
+
+/** Listelerin üst boşluğu: başlık listenin üstüne bindiği için ilk satır başlığın altından başlar. */
+val LocalListTopPadding = compositionLocalOf { 0.dp }
 
 /** "Animasyonları azalt" ayarı; efekt üreten modifier'lar bunu okur. */
 val LocalReduceMotion = compositionLocalOf { false }
@@ -73,55 +72,27 @@ fun segmentShape(index: Int, count: Int, big: Dp = 28.dp, small: Dp = 6.dp): Sha
     return RoundedCornerShape(topStart = top, topEnd = top, bottomStart = bottom, bottomEnd = bottom)
 }
 
-/** Kaydırmadan türeyen çekme/itme değeri (−1..1). Çubuklar ve liste satırları bunu okur. */
-val LocalPull = staticCompositionLocalOf<() -> Float> { { 0f } }
-
 /**
- * Çekme-itme fiziği. Kaydırma hızı ani bir değer üretir; bırakılınca gevşek bir yayla (az sönümlü) sıfıra
- * döner, böylece taşıp birkaç kez sallanır. Pozitif değer: içerik yukarı kayıyor.
- */
-class PullPhysics(private val scope: CoroutineScope) {
-    val pull = Animatable(0f)
-    var enabled = true
-    private var job: Job? = null
-
-    fun onDelta(dy: Float) {
-        if (!enabled || dy == 0f) return
-        val target = (-dy / 38f).coerceIn(-1f, 1f)
-        val next = pull.value + (target - pull.value) * 0.45f
-        job?.cancel()
-        job = scope.launch {
-            pull.snapTo(next)
-            pull.animateTo(0f, spring(dampingRatio = 0.35f, stiffness = 140f))
-        }
-    }
-}
-
-/**
- * Liste satırları için çekme-itme: ekrana girerken kaydırma yönünden az sönümlü bir yayla gelir (aşırı salınım
- * taşırır), kaydırma sürerken de satırlar yönün tersine gecikip geri sallanır. Her satırın genliği biraz farklıdır;
- * böylece hareket tek parça değil, dalgalı ve kaotik görünür.
+ * Liste satırları için giriş efekti: yalnızca liste ilk açılırken (kaydırma yokken) satırlar sırayla yukarı kayarak
+ * belirir. Kaydırma sırasında satırlara hiçbir efekt uygulanmaz.
  */
 @Composable
 fun Modifier.staggerIn(index: Int, listState: LazyListState): Modifier {
     val reduce = LocalReduceMotion.current
-    val pull = LocalPull.current
-    val entry = remember { Animatable(if (reduce) 0f else 1f) }
-    // Giriş yönü: içerik yukarı kayıyorsa satır aşağıdan, aşağı kayıyorsa yukarıdan gelir
-    val dir = remember { if (pull() < -0.05f) -1f else 1f }
+    val animate = !reduce && !listState.isScrollInProgress
+    val entry = remember { Animatable(if (animate) 1f else 0f) }
     LaunchedEffect(Unit) {
-        if (!reduce) {
-            if (!listState.isScrollInProgress && index < 8) delay(index * 25L)
-            entry.animateTo(0f, spring(dampingRatio = 0.5f, stiffness = 280f))
+        if (animate) {
+            if (index < 8) delay(index * 25L)
+            entry.animateTo(0f, spring(dampingRatio = 0.7f, stiffness = 300f))
         }
     }
-    val phase = 1f + 0.3f * sin(index * 1.9f)
     return this.graphicsLayer {
         val e = entry.value
-        val p = if (reduce) 0f else pull()
-        translationY = dir * e * 26.dp.toPx() + p * 9.dp.toPx() * phase
-        alpha = 1f - e.coerceIn(0f, 1f) * 0.8f
-        scaleY = 1f + abs(p) * 0.035f * phase
+        if (e != 0f) {
+            translationY = e * 26.dp.toPx()
+            alpha = 1f - e.coerceIn(0f, 1f) * 0.8f
+        }
     }
 }
 
