@@ -117,6 +117,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.withFrameNanos
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.CornerRadius
@@ -415,6 +416,13 @@ private fun Header(
         Modifier
             .fillMaxWidth()
             // Bildirilen yükseklik geniş ↔ dar arasında değişir (yalnızca yerleşim aşaması okur)
+            // Arka plan, yükseklik değiştiren layout'tan ÖNCE verilmeli: aksi halde arka plan eski (geniş) boyutta
+            // çizilir ve başlık içerik daralsa da küçülmüş görünmez.
+            .background(
+                cs.surfaceContainer,
+                RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
+            )
+            .clipToBounds()
             .layout { measurable, constraints ->
                 val placeable = measurable.measure(constraints)
                 val c = collapse().coerceIn(0f, 1f)
@@ -422,10 +430,6 @@ private fun Header(
                 val h = (placeable.height + (collapsedH - placeable.height) * c).roundToInt()
                 layout(placeable.width, h) { placeable.place(0, 0) }
             }
-            .background(
-                cs.surfaceContainer,
-                RoundedCornerShape(bottomStart = 28.dp, bottomEnd = 28.dp)
-            )
     ) {
         Box(
             Modifier
@@ -1051,14 +1055,14 @@ private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) 
                 SettingsCard(segmentShape(0, 1), container) {
                     SwitchRow(
                         "Kulaklık ses uyarısını kapat",
-                        "Yeniden başlatmadan sonra kulaklıkta sesi yükseltirken çıkan “yüksek ses kulaklarına zarar verebilir” " +
-                            "uyarısı gösterilmez. Anında geçerlidir, yeniden başlatma gerekmez.",
+                        "Yeniden başlatmadan sonra çıkan “yüksek ses kulaklarına zarar verebilir” uyarısı gösterilmez.",
                         state.noHpWarning, state.root == RootState.GRANTED, a.setNoHpWarning
                     )
                     Text(
-                        "Android'in kulak koruma (güvenli medya sesi) uyarısını devre dışı bırakır; uzun süre yüksek sesle " +
-                            "dinlemek işitmeye zarar verebilir. Vector kancası kullanır, ayrı bir KernelSU/Magisk modülü " +
-                            "gerekmez. Ses dozu (CSD) bildirimlerini değiştirmez.",
+                        "Sistem her açılışta bu uyarıyı yeniden etkinleştirir. Açıkken, her açılışta uyarıyı açan üç ses " +
+                            "ayarı kapatılır; bunu /data/adb/soundmod içindeki küçük bir betik yapar, sisteme kanca eklenmez. " +
+                            "Kapatırsanız betik silinir, uyarı sonraki açılıştan itibaren geri gelir. Uzun süre yüksek sesle " +
+                            "dinlemek işitmeye zarar verebilir.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )

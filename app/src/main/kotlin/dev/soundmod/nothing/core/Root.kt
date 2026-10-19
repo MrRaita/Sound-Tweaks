@@ -6,9 +6,16 @@ object Root {
         val ok: Boolean get() = code == 0
     }
 
+    /** `su` ikilisinin mutlak yolu: PATH ve bilinen konumlar taranır, bulunamazsa varsayılan konum kullanılır. */
+    private val suPath: String by lazy {
+        val dirs = (System.getenv("PATH") ?: "").split(':').filter { it.isNotBlank() } +
+            listOf("/system/bin", "/system/xbin", "/sbin", "/debug_ramdisk", "/data/adb/ksu/bin", "/data/adb/ap/bin")
+        dirs.map { java.io.File(it, "su") }.firstOrNull { it.isFile && it.canExecute() }?.path ?: "/system/bin/su"
+    }
+
     fun run(cmd: String): Result {
         return try {
-            val p = ProcessBuilder("su", "-c", cmd).redirectErrorStream(true).start()
+            val p = ProcessBuilder(suPath, "-c", cmd).redirectErrorStream(true).start()
             val out = p.inputStream.bufferedReader().readText()
             Result(p.waitFor(), out.trim())
         } catch (e: Exception) {

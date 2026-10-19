@@ -32,7 +32,7 @@ object RootProbe {
         val script = """
             echo "uid=${'$'}(id -u)"
             if [ "${'$'}(id -u)" = "0" ]; then
-              rm -f ${Root.q(SoundPaths.BASE + "/.status_system")}
+              rm -f ${Root.q(SoundPaths.BASE + "/.status_system")} ${Root.q(SoundPaths.OLD_HP_FLAG)}
               rm -f ${Root.q(SoundPaths.OVERRIDE_DIR)}/lock.* ${Root.q(SoundPaths.OVERRIDE_DIR)}/unlock.* ${Root.q(SoundPaths.OVERRIDE_DIR)}/trusted.*
               mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && chown -R system:system $b && chmod -R 755 $b && (chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b)
             fi
@@ -47,7 +47,7 @@ object RootProbe {
             echo "lkm=${'$'}(grep -c -i kernelsu /proc/modules 2>/dev/null)"
             echo "debug=${'$'}([ -e ${Root.q(SoundPaths.DEBUG_FLAG)} ] && echo yes)"
             echo "force=${'$'}([ -e ${Root.q(SoundPaths.FORCE_FLAG)} ] && echo yes)"
-            echo "nohp=${'$'}([ -e ${Root.q(SoundPaths.NO_HP_WARNING_FLAG)} ] && echo yes)"
+            echo "nohp=${'$'}([ -f ${Root.q(SoundPaths.HP_SCRIPT)} ] && [ -f ${Root.q(SoundPaths.HP_LAUNCHER)} ] && echo yes)"
             echo "sys=${'$'}(cat ${SoundPaths.STATUS_SYSTEM} 2>/dev/null)"
             echo "sysui=${'$'}(settings get global ${SoundPaths.SYSUI_STATUS_KEY} 2>/dev/null)"
         """.trimIndent()

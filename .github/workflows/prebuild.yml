@@ -34,17 +34,16 @@ jobs:
           path: dist
 
       - name: Ön sürüm oluştur
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: pre-${{ github.run_number }}
-          target_commitish: ${{ github.sha }}
-          name: Ön sürüm ${{ needs.build.outputs.version }} (derleme ${{ github.run_number }})
-          body: |
-            Otomatik ön derleme. Kararlı sürüm değildir.
-            Commit: ${{ github.sha }}
-            İmza: ${{ needs.build.outputs.signed == 'true' && 'yayın anahtarı' || 'debug anahtarı (yayın anahtarı tanımlı değil)' }}
-          prerelease: true
-          files: dist/SoundMod-*.apk
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: pre-${{ github.run_number }}
+          TITLE: Ön sürüm ${{ needs.build.outputs.version }} (derleme ${{ github.run_number }})
+          SIGNED: ${{ needs.build.outputs.signed }}
+        run: |
+          if [ "$SIGNED" = "true" ]; then SIG="yayın anahtarı"; else SIG="debug anahtarı (yayın anahtarı tanımlı değil)"; fi
+          gh release create "$TAG" dist/SoundMod-*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "$TITLE" --prerelease \
+            --notes "$(printf 'Otomatik ön derleme. Kararlı sürüm değildir.\nCommit: %s\nİmza: %s' "$GITHUB_SHA" "$SIG")"
 
       - name: Eski ön sürümleri temizle (son 10 kalsın)
         continue-on-error: true

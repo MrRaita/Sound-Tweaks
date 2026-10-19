@@ -70,11 +70,27 @@ class SoundRepository(private val ctx: Context) {
         )
     }
 
-    /** Kulaklık ses uyarısını kapatma bayrağı (hook her çağrıda dosyanın varlığına bakar). */
+    /**
+     * Kulaklık ses uyarısını kapatır/açar: /data/adb/soundmod altına, açılışta yalnızca üç sistem özelliğini
+     * ayarlayan küçük bir betik yazar ve post-fs-data.d'den çağırır. Sisteme kanca atılmaz. Açılırken
+     * özellikler hemen de ayarlanır; kapatılırken betik silinir, stok davranış sonraki açılışta döner.
+     */
     fun setNoHpWarning(on: Boolean): Root.Result {
-        val f = Root.q(SoundPaths.NO_HP_WARNING_FLAG)
+        if (!on) return Root.run("rm -f ${Root.q(SoundPaths.HP_LAUNCHER)} ${Root.q(SoundPaths.HP_SCRIPT)}; rmdir ${Root.q(SoundPaths.HP_DIR)} 2>/dev/null; true")
+        val script = "#!/system/bin/sh\n" +
+            "# SoundMod: kulaklık yüksek ses uyarısını kapatır (sistem açılışında çalışır)\n" +
+            "P=setprop\n" +
+            "command -v resetprop >/dev/null 2>&1 && P=resetprop\n" +
+            "\$P audio.safemedia.bypass true\n" +
+            "\$P audio.safemedia.force false\n" +
+            "\$P audio.safemedia.csd.force false\n"
+        val launcher = "#!/system/bin/sh\n[ -f ${SoundPaths.HP_SCRIPT} ] && sh ${SoundPaths.HP_SCRIPT}\n"
         return Root.run(
-            if (on) "touch $f && (chcon ${SoundPaths.CONTEXT} $f || true)" else "rm -f $f"
+            "mkdir -p ${Root.q(SoundPaths.HP_DIR)} /data/adb/post-fs-data.d && " +
+                "printf '%b' ${Root.q(script)} > ${Root.q(SoundPaths.HP_SCRIPT)} && " +
+                "printf '%b' ${Root.q(launcher)} > ${Root.q(SoundPaths.HP_LAUNCHER)} && " +
+                "chmod 755 ${Root.q(SoundPaths.HP_SCRIPT)} ${Root.q(SoundPaths.HP_LAUNCHER)} && " +
+                "sh ${Root.q(SoundPaths.HP_SCRIPT)}"
         )
     }
 

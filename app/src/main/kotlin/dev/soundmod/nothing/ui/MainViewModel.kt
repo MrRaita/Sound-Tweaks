@@ -433,29 +433,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         var fail = 0
         var needReload = false
         var needSysUi = false
-        var last: ApplyInfo? = null
+        var lastSummary = ""
         for (ss in readSlots()) {
             if (!repo.hasSource(ss.slot)) continue
-            repo.reprocess(ss.slot, optsFor(ss.slot)).fold(
-                onSuccess = {
-                    ok++
-                    last = it
-                    if (ss.slot.reload) needReload = true
-                    if (ss.slot.sysUiReload) needSysUi = true
-                },
-                onFailure = { fail++ }
-            )
+            val r = repo.reprocess(ss.slot, optsFor(ss.slot))
+            val info = r.getOrNull()
+            if (info == null) {
+                fail++
+                continue
+            }
+            ok++
+            lastSummary = info.summary()
+            if (ss.slot.reload) needReload = true
+            if (ss.slot.sysUiReload) needSysUi = true
         }
         if (needReload) reloadEffects()
         if (needSysUi && !_state.value.forceLock) askSysUiReload()
         _state.update { it.copy(slots = readSlots()) }
-        msg(
-            when {
-                ok == 0 && fail == 0 -> "Yeniden işlenecek seçili ses yok"
-                else -> "$ok ses yeniden işlendi" + (if (fail > 0) ", $fail hata" else "") +
-                    (last?.summary()?.let { if (ok == 1) " · $it" else "" } ?: "")
-            }
-        )
+        val text = if (ok == 0 && fail == 0) {
+            "Yeniden işlenecek seçili ses yok"
+        } else {
+            "$ok ses yeniden işlendi" + (if (fail > 0) ", $fail hata" else "") +
+                (if (ok == 1 && lastSummary.isNotBlank()) " · $lastSummary" else "")
+        }
+        msg(text)
     }
 
     private fun afterChange(slot: SoundSlot, text: String, info: ApplyInfo?) {
@@ -687,12 +688,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Kulaklık ses uyarısını kapat/aç (bayrak dosyası; anında geçerli, yeniden başlatma gerekmez). */
+    /** Kulaklık ses uyarısını kapat/aç (açılış betiği; kapatma sonraki açılışta etkili olur). */
     fun setNoHpWarning(on: Boolean) = work {
         val r = repo.setNoHpWarning(on)
         if (r.ok) {
             _state.update { it.copy(noHpWarning = on) }
-            msg(if (on) "Kulaklık ses uyarısı kapatıldı" else "Kulaklık ses uyarısı yeniden açıldı")
+            msg(if (on) "Kulaklık ses uyarısı kapatıldı" else "Betik silindi, uyarı bir sonraki açılışta geri gelir")
         } else {
             msg("Ayar değiştirilemedi: ${r.out}")
         }

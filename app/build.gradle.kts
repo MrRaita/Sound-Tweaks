@@ -14,7 +14,7 @@ android {
         targetSdk = 36
         // Her derlemede artsın diye CI çalışma numarasını kullanır
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.11.0"
+        versionName = "0.11.1"
     }
 
     // Yayın imzası: ön derleme ve kararlı sürüm aynı anahtarla imzalanır. Anahtar CI'da ortam değişkenleriyle

@@ -21,11 +21,13 @@ object SoundPaths {
      * aşıp medya ses seviyesiyle SoundMod tarafından çalınır. Yoksa stok mekanizma kullanılır.
      */
     const val FORCE_FLAG = "$BASE/.force_lock"
-    /**
-     * Bu dosya varsa kulaklıkta ses yükseltilirken gösterilen "güvenli medya sesi" (kulak koruma) uyarısı
-     * atlanır. Hook her çağrıda yalnızca dosyanın varlığına bakar; anında geçerli olur.
-     */
-    const val NO_HP_WARNING_FLAG = "$BASE/.no_hp_warning"
+    /** Kulaklık uyarısı betiğinin kendi klasörü (kök yöneticisinin okuduğu /data/adb altında) */
+    const val HP_DIR = "/data/adb/soundmod"
+    const val HP_SCRIPT = "$HP_DIR/hp_warning.sh"
+    /** Magisk / KernelSU / APatch'in sistem başlamadan önce çalıştırdığı dizin; içine yalnızca 1 satırlık çağrı konur */
+    const val HP_LAUNCHER = "/data/adb/post-fs-data.d/soundmod_hp_warning.sh"
+    /** Eski sürümlerden kalan bayrak dosyası (temizlenir) */
+    const val OLD_HP_FLAG = "$BASE/.no_hp_warning"
     /** Herkesin (SystemUI dahil) okuyabildiği SELinux tipi */
     const val CONTEXT = "u:object_r:system_file:s0"
 
