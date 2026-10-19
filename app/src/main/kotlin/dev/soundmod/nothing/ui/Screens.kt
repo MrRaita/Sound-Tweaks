@@ -109,7 +109,6 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.mutableStateOf
@@ -148,6 +147,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
@@ -230,7 +230,6 @@ fun SoundModScreen(
         }
     }
     val density = LocalDensity.current
-    val scope = rememberCoroutineScope()
 
     // Üst başlık iki durumludur (geniş / dar): kaydırma eşiği aşılınca yaylı bir geçişle daralır, başa dönülünce açılır.
     // Eşikler arasında (histerezis) durum değişmez; başlık yarı daralmış bir ara halde kalmaz.
@@ -1198,9 +1197,12 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                     shape = segmentShape(1, 2), container = container,
                     title = "Vector modülü", ok = state.hookStatus != null,
                     summary = hookSummary(state.hookStatus),
-                    text = state.hookStatus
-                        ?: "Hook henüz çalışmamış. Vector'da SoundMod'u etkinleştir, kapsamda " +
-                        "“Sistem Çerçevesi” ve “Sistem Arayüzü”nü seç, sonra yeniden başlat."
+                    text = state.hookStatus?.let {
+                        if (it.contains("HATA")) "Bazı kancalar çalışmıyor" else "Kancalar yüklendi"
+                    } ?: ("Hook henüz çalışmamış. Vector'da SoundMod'u etkinleştir, kapsamda " +
+                        "“Sistem Çerçevesi” ve “Sistem Arayüzü”nü seç, sonra yeniden başlat."),
+                    details = hookDetails(state.hookStatus),
+                    labelWidth = 120.dp
                 ) {}
             }
         }
@@ -1325,7 +1327,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
         item {
             Text(
-                "SoundMod 0.11.2",
+                "SoundMod 0.11.3",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
@@ -1347,6 +1349,7 @@ private fun StatusCard(
     summary: String,
     text: String,
     details: List<Pair<String, String>> = emptyList(),
+    labelWidth: Dp = 92.dp,
     actions: @Composable () -> Unit
 ) {
     // 0 = otomatik (sorun varsa açık), 1 = kullanıcı açtı, 2 = kullanıcı kapattı
@@ -1414,7 +1417,7 @@ private fun StatusCard(
                                         k,
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                        modifier = Modifier.width(92.dp)
+                                        modifier = Modifier.width(labelWidth)
                                     )
                                     Text(v, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
                                 }
@@ -1627,6 +1630,57 @@ private fun IntroItem(title: String, body: String) {
     }
 }
 
+
+/**
+ * Hook durum metnini (“system_server: A OK, B HATA: …” / “SystemUI: … [Vector 2.2, API 102]”) Root kartındaki gibi
+ * “ad → değer” satırlarına ayırır. Parantez içindeki virgüller bölmeyi bozmaz.
+ */
+private fun hookDetails(status: String?): List<Pair<String, String>> {
+    if (status.isNullOrBlank()) return emptyList()
+    val names = mapOf(
+        "SoundEffectsHelper" to "Klavye ve dokunma",
+        "Screenshot" to "Ekran görüntüsü",
+        "Keyguard" to "Kilit ekranı"
+    )
+    var framework = ""
+    val rows = ArrayList<Pair<String, String>>()
+    for (line in status.lines()) {
+        var body = line.substringAfter(':', "").trim()
+        if (body.isEmpty()) continue
+        val br = Regex("""\s*\[([^\]]*)]\s*$""").find(body)
+        if (br != null) {
+            framework = br.groupValues[1].replace(", API", " · API")
+            body = body.substring(0, br.range.first)
+        }
+        val parts = ArrayList<String>()
+        var depth = 0
+        val cur = StringBuilder()
+        var i = 0
+        while (i < body.length) {
+            val c = body[i]
+            if (c == '(') depth++
+            if (c == ')') depth--
+            if (c == ',' && depth == 0) {
+                parts += cur.toString().trim(); cur.clear()
+            } else cur.append(c)
+            i++
+        }
+        if (cur.isNotBlank()) parts += cur.toString().trim()
+        for (part in parts) {
+            val name = part.substringBefore(' ')
+            val value = part.substringAfter(' ', "").trim()
+            val shown = when {
+                value == "OK" -> "Çalışıyor"
+                value.startsWith("HATA") -> "Hata" + value.removePrefix("HATA").ifBlank { "" }
+                value.startsWith("stok") -> "Stok davranış" + value.removePrefix("stok")
+                else -> value.ifBlank { "—" }
+            }
+            rows += (names[name] ?: name) to shown
+        }
+    }
+    if (framework.isNotBlank()) rows.add(0, "Çerçeve" to framework)
+    return rows
+}
 
 private fun hookSummary(status: String?): String = when {
     status == null -> "Çalışmıyor"

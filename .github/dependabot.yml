@@ -15,8 +15,10 @@ updates:
         patterns:
           - "org.jetbrains.kotlin*"
           - "org.jetbrains.kotlinx*"
-    labels:
-      - "bağımlılıklar"
+    ignore:
+      # Modül API 101'de kalır (daha eski Vector/LSPosed sürümleriyle uyumlu); 102 gerekirse elle opsiyonel eklenir
+      - dependency-name: "io.github.libxposed:api"
+        update-types: ["version-update:semver-major"]
 
   # GitHub Actions sürümleri
   - package-ecosystem: "github-actions"
@@ -28,5 +30,3 @@ updates:
       actions:
         patterns:
           - "*"
-    labels:
-      - "bağımlılıklar"

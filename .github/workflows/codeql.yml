@@ -39,17 +39,25 @@ jobs:
           distribution: temurin
           java-version: 21
 
+      - name: Gradle sürümünü oku
+        if: matrix.language == 'java-kotlin'
+        id: gv
+        run: |
+          V=$(sed -n 's#.*gradle-\([0-9][0-9.]*\)-\(bin\|all\)\.zip.*#\1#p' gradle/wrapper/gradle-wrapper.properties | head -1)
+          test -n "$V" || { echo "::error::gradle-wrapper.properties içinde Gradle sürümü bulunamadı"; exit 1; }
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
       - name: Gradle kur
         if: matrix.language == 'java-kotlin'
         uses: gradle/actions/setup-gradle@ed408507eac070d1f99cc633dbcf757c94c7933a # v4
         with:
-          gradle-version: 9.5.0
+          gradle-version: ${{ steps.gv.outputs.version }}
 
       - name: Gradle sarmalayıcıyı hazırla
         if: matrix.language == 'java-kotlin'
         run: |
           if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            gradle wrapper --gradle-version 9.5.0
+            gradle wrapper --gradle-version "${{ steps.gv.outputs.version }}"
           fi
           chmod +x gradlew
 
