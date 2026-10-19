@@ -69,7 +69,7 @@ dependencies {
     implementation("androidx.activity:activity-compose:1.12.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.10.2")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 
     // Compose 1.12.x (compileSdk 37 + AGP 9 ister). Material3 Expressive alfa sürümü ByeDPI'dakiyle aynı.
     implementation(platform("androidx.compose:compose-bom:2026.09.00"))
