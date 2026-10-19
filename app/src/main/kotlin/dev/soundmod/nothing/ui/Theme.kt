@@ -23,12 +23,14 @@ import androidx.core.view.WindowCompat
  * Material 3 Expressive tema. Expressive'e özgü kısımlar (MaterialExpressiveTheme, MotionScheme)
  * yalnızca bu dosyada; kararlı M3'e dönmek gerekirse burası değişir.
  *
- * @param themeMode 0 = sistem, 1 = açık, 2 = koyu, 3 = OLED (saf siyah)
+ * @param themeMode 0 = sistem, 1 = açık, 2 = koyu
+ * @param oled      true ise koyu temada (sistem koyuysa da) saf siyah yüzeyler kullanılır
  * @param dynamic   true ise (Android 12+) sistem/duvar kağıdı renkleri; değilse seçilen palet
  */
 @Composable
 fun SoundModTheme(
     themeMode: Int,
+    oled: Boolean,
     dynamic: Boolean,
     palette: Int,
     reduceMotion: Boolean,
@@ -36,10 +38,9 @@ fun SoundModTheme(
 ) {
     val dark = when (themeMode) {
         1 -> false
-        2, 3 -> true
+        2 -> true
         else -> isSystemInDarkTheme()
     }
-    val oled = themeMode == 3
     val ctx = LocalContext.current
     val useDynamic = dynamic && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val scheme = remember(useDynamic, dark, palette, oled) {
@@ -48,7 +49,7 @@ fun SoundModTheme(
         } else {
             Palettes.scheme(Palettes.list[palette.coerceIn(0, Palettes.list.lastIndex)], dark)
         }
-        if (oled) base.toOled() else base
+        if (dark && oled) base.toOled() else base
     }
 
     // Durum/gezinti çubuğu simgeleri uygulama temasına uysun (sistem temasından bağımsız seçilebildiği için)

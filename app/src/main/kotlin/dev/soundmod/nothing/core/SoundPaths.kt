@@ -2,6 +2,8 @@ package dev.soundmod.nothing.core
 
 /** Hook (system_server / SystemUI) ve uygulama arasında paylaşılan sabitler. */
 object SoundPaths {
+    /** Modülün derlendiği/hedeflediği libxposed API sürümü (module.prop ve build.gradle.kts ile aynı tutulur) */
+    const val MODULE_API = 101
     /** Root'un yönettiği, herkesin okuyabildiği (system_file bağlamlı) ses deposu */
     const val BASE = "/data/system/soundmod"
     /** Hook'un baktığı dizin: <stokAdı>.<uzantı> (ör. KeypressStandard.wav) */

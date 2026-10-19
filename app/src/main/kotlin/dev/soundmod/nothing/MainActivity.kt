@@ -72,6 +72,7 @@ class MainActivity : ComponentActivity() {
                     setTargetDb = vm::setTargetDb,
                     reapplyAll = vm::reapplyAll,
                     setThemeMode = vm::setThemeMode,
+                    setOled = vm::setOled,
                     setDynamic = vm::setDynamic,
                     setPalette = vm::setPalette,
                     restartSysUiNow = vm::restartSysUiNow,
@@ -97,6 +98,7 @@ class MainActivity : ComponentActivity() {
 
             SoundModTheme(
                 themeMode = state.themeMode,
+                oled = state.oled,
                 dynamic = state.dynamicColor,
                 palette = state.palette,
                 reduceMotion = state.reduceMotion

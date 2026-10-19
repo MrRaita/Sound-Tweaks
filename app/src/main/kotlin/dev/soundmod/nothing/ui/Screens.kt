@@ -3,6 +3,7 @@
 package dev.soundmod.nothing.ui
 
 import dev.soundmod.nothing.BuildConfig
+import dev.soundmod.nothing.core.SoundPaths
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -177,6 +178,7 @@ data class UiActions(
     val setTargetDb: (Int) -> Unit,
     val reapplyAll: () -> Unit,
     val setThemeMode: (Int) -> Unit,
+    val setOled: (Boolean) -> Unit,
     val setDynamic: (Boolean) -> Unit,
     val setPalette: (Int) -> Unit,
     val restartSysUiNow: () -> Unit,
@@ -1214,7 +1216,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
             Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(1, listState)) {
                 SettingsCard(segmentShape(0, 4), container) {
                     Text("Tema", style = MaterialTheme.typography.titleMedium)
-                    val modes = listOf("Sistem", "Açık", "Koyu", "OLED")
+                    val modes = listOf("Sistem", "Açık", "Koyu")
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         modes.forEachIndexed { i, t ->
                             FilterChip(
@@ -1226,6 +1228,11 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                             )
                         }
                     }
+                    SwitchRow(
+                        "OLED (saf siyah)",
+                        "Koyu temada arka planı siyah yapar; sistem koyuya geçince de uygulanır",
+                        state.oled, true, a.setOled
+                    )
                 }
                 SettingsCard(segmentShape(1, 4), container) {
                     SwitchRow(
@@ -1327,7 +1334,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
         item {
             Text(
-                "SoundMod 0.11.3",
+                "SoundMod 0.11.4",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
@@ -1649,7 +1656,7 @@ private fun hookDetails(status: String?): List<Pair<String, String>> {
         if (body.isEmpty()) continue
         val br = Regex("""\s*\[([^\]]*)]\s*$""").find(body)
         if (br != null) {
-            framework = br.groupValues[1].replace(", API", " · API")
+            framework = br.groupValues[1].replace(", API", " · çerçeve API")
             body = body.substring(0, br.range.first)
         }
         val parts = ArrayList<String>()
@@ -1678,7 +1685,10 @@ private fun hookDetails(status: String?): List<Pair<String, String>> {
             rows += (names[name] ?: name) to shown
         }
     }
-    if (framework.isNotBlank()) rows.add(0, "Çerçeve" to framework)
+    if (framework.isNotBlank()) {
+        rows.add(0, "Çerçeve" to framework)
+        rows.add(1, "Modül API" to SoundPaths.MODULE_API.toString())
+    }
     return rows
 }
 

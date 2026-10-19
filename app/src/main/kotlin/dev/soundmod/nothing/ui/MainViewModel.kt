@@ -75,6 +75,7 @@ data class UiState(
     val normalize: Boolean = true,
     val targetDb: Int = -30,
     val themeMode: Int = 0,
+    val oled: Boolean = false,
     val dynamicColor: Boolean = true,
     val palette: Int = 0,
     val sys: SysState = SysState(),
@@ -115,7 +116,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             reduceMotion = prefs.getBoolean("reduce_motion", false),
             normalize = prefs.getBoolean("normalize", true),
             targetDb = prefs.getInt("target_db", -30),
-            themeMode = prefs.getInt("theme_mode", 0),
+            themeMode = prefs.getInt("theme_mode", 0).let { if (it == 3) 2 else it },
+            oled = prefs.getBoolean("oled", prefs.getInt("theme_mode", 0) == 3),
             dynamicColor = prefs.getBoolean("dynamic", true),
             palette = prefs.getInt("palette", 0),
             sys = readSys(),
@@ -358,6 +360,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val c = v.coerceIn(-45, -10)
         prefs.edit().putInt("target_db", c).apply()
         _state.update { it.copy(targetDb = c) }
+    }
+
+    fun setOled(v: Boolean) {
+        prefs.edit().putBoolean("oled", v).apply()
+        _state.update { it.copy(oled = v) }
     }
 
     fun setThemeMode(v: Int) {
