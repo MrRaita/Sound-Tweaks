@@ -225,9 +225,13 @@ app/src/main/
   (Vector uzak dosya desteği) gerekir; henüz uygulanmamıştır.
 - Eski kamera API'sinin `cameraserver` içinde yerel kodla çaldığı deklanşör sesi hook'lanamaz.
 - Kulaklık uyarısı seçeneği kök yöneticisinin `/data/adb/post-fs-data.d` betiklerini çalıştırmasına bağlıdır.
+- Sistem ses kütüphanesi `/<bölüm>/media/audio` dizinlerini kökteki tüm bölümlerde arar; üreticiye özel ses
+  dizinleri bu kalıbın dışındaysa listelenmez. Tanı raporundaki "ses dizinleri" bölümü cihazda nelerin bulunduğunu gösterir.
 - Hook noktaları AOSP sınıf adlarına dayanır; üreticiye özel arayüzlerde sınıf adları farklıysa ilgili hook çalışmaz ve
   durum kartında hata olarak görünür.
 
 ## Lisans
 
-Henüz bir lisans dosyası eklenmemiştir.
+SoundMod, [GNU Genel Kamu Lisansı sürüm 3](LICENSE) (GPL-3.0-or-later) ile lisanslanmıştır. Programı, Özgür Yazılım
+Vakfı'nın yayımladığı GPL'in 3. sürümü ya da (isteğinize bağlı olarak) daha yeni bir sürümü koşullarında yeniden
+dağıtabilir ve değiştirebilirsiniz. Program yararlı olması umuduyla dağıtılır, ancak herhangi bir garanti vermez.

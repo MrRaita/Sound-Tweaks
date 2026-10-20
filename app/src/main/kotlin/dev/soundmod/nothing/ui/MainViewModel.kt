@@ -642,7 +642,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             echo "charging_sounds_enabled=${'$'}(settings get global charging_sounds_enabled)"
             echo "== varsayilan dosyalar =="
             for k in $keys; do v=${'$'}(settings get global ${'$'}k); echo "${'$'}k -> ${'$'}(ls -lZ ${'$'}v 2>&1)"; done
-            echo "lock/unlock/trusted stok dosyalar:"; ls -lZ /product/media/audio/ui/ 2>&1 | grep -i -E "lock|trusted"
+            echo "lock/unlock/trusted stok dosyalar:"; ls -lZ /*/media/audio/ui/ 2>/dev/null | grep -i -E "lock|trusted"
+            echo "== ses dizinleri =="
+            for d in /*/media/audio; do [ -d "${'$'}d" ] && echo "${'$'}d: ${'$'}(find "${'$'}d" -type f 2>/dev/null | wc -l) dosya, alt dizinler: ${'$'}(ls "${'$'}d" 2>/dev/null | tr '\n' ' ')"; done
             echo "== hook durumu =="; cat ${SoundPaths.STATUS_SYSTEM} 2>&1; echo
             settings get global ${SoundPaths.SYSUI_STATUS_KEY}
             echo "kilit sesi zorla cal: ${'$'}([ -e ${SoundPaths.FORCE_FLAG} ] && echo ACIK || echo kapali)"
