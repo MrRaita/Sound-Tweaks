@@ -21,7 +21,7 @@ ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler s
 - Yüzen alt gezinti çubuğu, iki genişlikte (geniş: seçili sekme simge ve yazıyla genişleyen hap; kompakt: yalnızca
   simgeler ve kayan vurgu), sekme sırasını sürükle-bırak ile değiştirme ve sekmeleri gizleme.
 - Üst başlık aşağı kaydırınca daralır, uygulama adının yerine sekme adı geçer; başlık listenin üstüne biner, köşelerin
-  ardında liste görünür.
+  ardında liste görünür. Kütüphane sekmesinde arama satırı ve filtre çipleri başlığa bağlıdır, başlıkla birlikte yukarı kayar.
 - Kulaklıkta çıkan yüksek ses (kulak koruma) uyarısını kapatma seçeneği; sisteme kanca eklenmez, açılışta çalışan
   küçük bir betik kullanılır.
 - Tanılama raporu (dosya izinleri, ayarlar, hook durumu, SELinux reddleri).

@@ -34,6 +34,9 @@ val LocalListBottomPadding = compositionLocalOf { 24.dp }
 /** Listelerin üst boşluğu: başlık listenin üstüne bindiği için ilk satır başlığın altından başlar. */
 val LocalListTopPadding = compositionLocalOf { 0.dp }
 
+/** Başlığın o anki (kaydırmayla daralan) yüksekliği, piksel; yalnızca yerleşim aşamasında okunmalıdır. */
+val LocalHeaderHeight = compositionLocalOf<() -> Int> { { 0 } }
+
 /** "Animasyonları azalt" ayarı; efekt üreten modifier'lar bunu okur. */
 val LocalReduceMotion = compositionLocalOf { false }
 

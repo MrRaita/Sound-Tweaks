@@ -14,7 +14,7 @@ android {
         targetSdk = 36
         // Her derlemede artsın diye CI çalışma numarasını kullanır
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.11.5"
+        versionName = "0.11.6"
         // Ayrıntılı olay kaydı yalnızca ön derlemede (SOUNDMOD_VERBOSE=true); kararlı sürümde ve yerelde yok
         buildConfigField("boolean", "VERBOSE_LOG", (System.getenv("SOUNDMOD_VERBOSE") == "true").toString())
     }
@@ -65,7 +65,7 @@ dependencies {
     // libxposed: API'yi framework (Vector) çalışma anında sağlar, APK'ya girmez
     compileOnly("io.github.libxposed:api:101.0.1")
 
-    implementation("androidx.core:core-ktx:1.19.1")
+    implementation("androidx.core:core-ktx:1.17.0")
     implementation("androidx.activity:activity-compose:1.12.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
@@ -77,5 +77,5 @@ dependencies {
     implementation("androidx.compose.foundation:foundation")
     implementation("androidx.compose.animation:animation")
     implementation("androidx.compose.material:material-icons-core")
-    implementation("androidx.compose.material3:material3:1.5.0-beta01")
+    implementation("androidx.compose.material3:material3:1.5.0-alpha29")
 }

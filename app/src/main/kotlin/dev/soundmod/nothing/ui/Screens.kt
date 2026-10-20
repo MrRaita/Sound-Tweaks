@@ -259,11 +259,23 @@ fun SoundModScreen(
     // Başlık listenin üstüne biner (köşelerin ardında liste görünür); listeler genişlemiş başlık kadar boşlukla başlar
     var headerPx by remember { mutableIntStateOf(0) }
     val headerInset = with(density) { headerPx.toDp() }
+    // Başlığın anlık yüksekliği (Kütüphane'nin sabit arama/filtre alanı başlığa bağlı kalsın diye)
+    val statusTopPx = WindowInsets.statusBars.getTop(density)
+    val collapsedBandInt = with(density) { 56.dp.roundToPx() }
+    val headerHeightFn = remember(collapse, statusTopPx, collapsedBandInt) {
+        {
+            val c = collapse.value.coerceIn(0f, 1f)
+            val expanded = headerPx
+            val collapsed = statusTopPx + collapsedBandInt
+            (expanded + (collapsed - expanded) * c).roundToInt()
+        }
+    }
 
     CompositionLocalProvider(
         LocalReduceMotion provides state.reduceMotion,
         LocalListBottomPadding provides listBottom,
-        LocalListTopPadding provides headerInset
+        LocalListTopPadding provides headerInset,
+        LocalHeaderHeight provides headerHeightFn
     ) {
         Scaffold(
             containerColor = MaterialTheme.colorScheme.surface,
@@ -586,7 +598,11 @@ private fun SoundsTab(
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
                 )
-                CompositionLocalProvider(LocalListBottomPadding provides 24.dp, LocalListTopPadding provides 0.dp) {
+                CompositionLocalProvider(
+                    LocalListBottomPadding provides 24.dp,
+                    LocalListTopPadding provides 0.dp,
+                    LocalHeaderHeight provides { 0 }
+                ) {
                     SoundList(
                         sounds = state.library,
                         loading = state.libraryLoading,
@@ -723,7 +739,17 @@ private fun SoundList(
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(top = LocalListTopPadding.current)) {
+    val headerHeight = LocalHeaderHeight.current
+    // Arama satırı ve filtre çipleri başlığa bağlıdır: başlık daralırken birlikte yukarı kayar, liste onlarla büyür
+    Column(
+        Modifier
+            .layout { measurable, constraints ->
+                val top = headerHeight().coerceIn(0, constraints.maxHeight)
+                val placeable = measurable.measure(constraints.copy(minHeight = 0, maxHeight = constraints.maxHeight - top))
+                layout(placeable.width, constraints.maxHeight) { placeable.place(0, top) }
+            }
+            .fillMaxSize()
+    ) {
         Row(
             Modifier.padding(start = 28.dp, end = 8.dp),
             verticalAlignment = Alignment.CenterVertically
@@ -1322,7 +1348,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
         item {
             Text(
-                "SoundMod 0.11.5",
+                "SoundMod 0.11.6",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
