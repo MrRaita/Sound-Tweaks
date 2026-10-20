@@ -2,9 +2,6 @@ package dev.soundmod.nothing.ui
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.foundation.interaction.InteractionSource
@@ -29,10 +26,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.path
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.graphics.TransformOrigin
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.launch
 
 /** Listelerin alt boşluğu: yüzen çubukta çubuğun altında kalmasın diye büyür. */
 val LocalListBottomPadding = compositionLocalOf { 24.dp }

@@ -14,7 +14,7 @@ android {
         targetSdk = 36
         // Her derlemede artsın diye CI çalışma numarasını kullanır
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.11.4"
+        versionName = "0.11.5"
         // Ayrıntılı olay kaydı yalnızca ön derlemede (SOUNDMOD_VERBOSE=true); kararlı sürümde ve yerelde yok
         buildConfigField("boolean", "VERBOSE_LOG", (System.getenv("SOUNDMOD_VERBOSE") == "true").toString())
     }

@@ -10,7 +10,6 @@ import android.content.Context
 import android.os.Build
 import android.os.SystemClock
 import androidx.compose.animation.AnimatedContent
-import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -65,7 +64,6 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.KeyboardArrowDown
-import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Refresh
@@ -91,8 +89,6 @@ import androidx.compose.material3.LinearWavyProgressIndicator
 import androidx.compose.material3.LoadingIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
@@ -121,14 +117,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.alpha
-import androidx.compose.ui.draw.drawBehind
-import androidx.compose.ui.geometry.CornerRadius
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.RoundRect
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.layout
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.focus.FocusRequester
@@ -1334,7 +1322,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
         item {
             Text(
-                "SoundMod 0.11.4",
+                "SoundMod 0.11.5",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
@@ -1622,7 +1610,7 @@ private fun IntroDialog(onDismiss: () -> Unit) {
                         "başlatmadan Sistem Arayüzünü yeniden başlatır. Ekran birkaç saniye yeniden çizilir, açık " +
                         "uygulamalar kapanmaz. Hiçbir ayar bunu kendiliğinden yapmaz; önce sana sorulur."
                 )
-                IntroItem("Takılırsa", "Ayarlar → Gelişmiş → Tanı raporu neyin çalışmadığını gösterir.")
+                IntroItem("Takılırsa", "Ayarlar → Araçlar → Tanı raporu oluştur neyin çalışmadığını gösterir.")
             }
         },
         confirmButton = { TextButton(onClick = onDismiss) { Text("Anladım") } }

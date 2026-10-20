@@ -16,12 +16,14 @@ ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler s
   seviyeleri dahil).
 - İsteğe bağlı "zorla çal" modu: kilit sesleri sessiz/titreşim modunda da duyulacak şekilde medya ses akışından çalınır.
 - Sistem Arayüzünü yeniden başlatma düğmesi (ilk kullanımda uyarı gösterir, uyarı kapatılabilir).
-- Tema: sistem, açık, koyu, OLED (saf siyah); Material You renkleri ya da 12 hazır palet.
+- Tema: sistem, açık, koyu; ayrı bir OLED (saf siyah) anahtarı, koyu temanın (sistem koyuya geçince de) siyah
+  olmasını sağlar. Material You renkleri ya da 12 hazır palet.
 - Yüzen alt gezinti çubuğu, iki genişlikte (geniş: seçili sekme simge ve yazıyla genişleyen hap; kompakt: yalnızca
   simgeler ve kayan vurgu), sekme sırasını sürükle-bırak ile değiştirme ve sekmeleri gizleme.
-- Kaydırma hızına bağlı çekme-itme efekti liste satırlarında; üst başlık aşağı kaydırınca daralır ve uygulama
-  adının yerine sekme adı geçer.
-- Kulaklıkta ses yükseltilirken gösterilen güvenli medya sesi (kulak koruma) uyarısını kapatma seçeneği.
+- Üst başlık aşağı kaydırınca daralır, uygulama adının yerine sekme adı geçer; başlık listenin üstüne biner, köşelerin
+  ardında liste görünür.
+- Kulaklıkta çıkan yüksek ses (kulak koruma) uyarısını kapatma seçeneği; sisteme kanca eklenmez, açılışta çalışan
+  küçük bir betik kullanılır.
 - Tanılama raporu (dosya izinleri, ayarlar, hook durumu, SELinux reddleri).
 
 ## Desteklenen sesler
@@ -40,7 +42,8 @@ kapsam dışındadır (bkz. [Bilinen sınırlamalar](#bilinen-sınırlamalar)).
 ## Gereksinimler
 
 - Android 9 (API 28) veya üzeri
-- Root (KernelSU, Magisk ya da APatch); ek bir modül gerekmez
+- Root (KernelSU, Magisk ya da APatch); ek bir modül gerekmez. Kulaklık uyarısı seçeneği için kök yöneticisinin
+  `/data/adb/post-fs-data.d` dizinini çalıştırması gerekir (üçü de çalıştırır)
 - Vector (LSPosed) 2.1 veya üzeri, libxposed API 101 desteğiyle
 
 Geliştirme ve test ortamı: Nothing Phone (4a), Nothing OS 4.1, Android 16, KernelSU, Vector 2.2.
@@ -58,8 +61,10 @@ Geliştirme ve test ortamı: Nothing Phone (4a), Nothing OS 4.1, Android 16, Ker
 - **Sesler:** Bir sese dokunulduğunda sistem seslerinden seçme, kendi dosyasını seçme, susturma ya da varsayılana
   dönme seçenekleri açılır. Dosyalar çözülüp WAV olarak depoya yazılır.
 - **Kütüphane:** Bulunan sistem sesleri filtrelenir, arama simgesiyle aranır ve dinlenir.
-- **Gelişmiş:** Sistem ses anahtarları, ses işleme (genel ve ses başına normalize), kilit seslerini zorla çal.
-- **Ayarlar:** Durum kartları, tema ve renkler, alt çubuk düzeni, Sistem Arayüzü yenileme ve tanılama.
+- **Gelişmiş:** Sistem ses anahtarları, ses işleme (genel ve ses başına normalize), kilit seslerini zorla çal,
+  kulaklık uyarısını kapat.
+- **Ayarlar:** Durum kartları (Root ve Vector modülü), tema ve renkler, alt çubuk düzeni, araçlar (Sistem Arayüzünü
+  yenileme, tanı raporu).
 
 ## Nasıl çalışır
 
@@ -74,12 +79,11 @@ bağlamıyla işaretlenir.
 Bağlam, uygulama her açıldığında ve her ses yazıldığında yeniden uygulanır. Sistem güncellemesi dosya bağlamlarını
 yeniden yazarsa uygulamanın bir kez açılması yeterlidir.
 
-### Kaydırma efektleri
+### Arayüz
 
-Kaydırma hareketi bir `NestedScrollConnection` ile izlenir ve −1..1 aralığında bir "çekme" değerine dönüştürülür;
-değer bırakılınca az sönümlü bir yayla sıfıra döner. Liste satırları bu değeri yalnızca çizim aşamasında okur
-(yeniden oluşturma tetiklenmez). Üst başlık iki durumludur (geniş/dar); kaydırma eşiği aşılınca yaylı bir geçişle
-daralır. "Animasyonları azalt" açıkken efektler kapanır.
+Üst başlık iki durumludur (geniş/dar); kaydırma eşiği aşılınca yaylı bir geçişle daralır, arka planı yükseklikle
+birlikte küçülür ve listenin üstüne biner. Liste satırlarına kaydırma sırasında efekt uygulanmaz; yalnızca liste ilk
+açılırken satırlar sırayla belirir. "Animasyonları azalt" açıkken geçişler sadeleşir.
 
 ### Hook'lar
 
@@ -89,22 +93,28 @@ libxposed API 101 ile yazılmıştır (`minApiVersion = targetApiVersion = 101`)
 | Süreç | Sınıf / metot | Amaç |
 |---|---|---|
 | `system_server` | `SoundEffectsHelper.getResourceFilePath` | Klavye ve dokunma sesi yollarını yönlendirir |
-| `system_server` | `SoundDoseHelper.checkSafeMediaVolume`, `checkSafeMediaVolume_l`, `raiseVolumeDisplaySafeMediaVolume` | Bayrak varken kulaklık ses uyarısını atlar |
 | SystemUI | `ScreenshotSoundProviderImpl.getScreenshotSound` | Ekran görüntüsü sesini değiştirir |
 | SystemUI | `KeyguardViewMediator.playSounds`, `playTrustedSound` | Yalnızca "zorla çal" modunda kilit seslerini çalar |
 
-Her hook ayrı bir `try/catch` içindedir; hata durumunda stok davranış sürer. Kilit sesleri varsayılanda stok
+Vector kartında "Çerçeve" satırı Vector'ün kendi API sürümünü, "Modül API" satırı SoundMod'un derlendiği API'yi
+(101) gösterir; ikisinin farklı olması normaldir. Her hook ayrı bir `try/catch` içindedir; hata durumunda stok
+davranış sürer. Kilit sesleri varsayılanda stok
 mekanizmayla çalar: sistem `lock_sound`, `unlock_sound` ve `trusted_sound` ayarlarındaki yolu Sistem Arayüzü açılırken
 bir kez yükler. "Zorla çal" modu kapalıyken SystemUI'a hook eklenmez.
 
 ### Kulaklık ses uyarısı
 
-Android, yeniden başlatmadan sonra kulaklıkta ses belirli bir seviyenin üzerine çıkarılırken bir uyarı gösterir
-(`AudioService.adjustStreamVolume` → `SoundDoseHelper.raiseVolumeDisplaySafeMediaVolume` → `checkSafeMediaVolume`).
-Seçenek açıldığında `/data/system/soundmod/.no_hp_warning` bayrağı oluşturulur; ilgili üç yöntem bayrak varken
-"uyarı gerekmiyor" (`false`) sonucunu döndürür ve uyarı hiç gösterilmez. Bu sürümde dönüş değerleri bayt koduyla
-doğrulanmıştır: `true`, sesin güvenli seviyeye kırpılması anlamına gelir. Hook her çağrıda yalnızca bayrağın varlığına bakar, bu
-yüzden ayar anında geçerlidir ve ayrı bir `system.prop` modülü gerekmez. Ses dozu (CSD) bildirimleri değiştirilmez.
+Android, yeniden başlatmadan sonra kulaklıkta ses belirli bir seviyenin üzerine çıkarılırken bir uyarı gösterir. Uyarıyı
+açılışta okunan üç sistem özelliği denetler. Seçenek açıldığında SoundMod şunları yapar:
+
+- `/data/adb/soundmod/hp_warning.sh` betiğini yazar; betik `audio.safemedia.bypass=true`,
+  `audio.safemedia.force=false` ve `audio.safemedia.csd.force=false` değerlerini ayarlar (`resetprop`, yoksa `setprop`).
+- Sistem başlamadan önce çalışsın diye `/data/adb/post-fs-data.d/soundmod_hp_warning.sh` içine yalnızca betiği çağıran
+  tek satır koyar.
+- Özellikleri o anda da bir kez ayarlar, böylece yeniden başlatma beklemek gerekmez.
+
+Seçenek kapatılınca iki dosya da silinir ve uyarı sonraki açılıştan itibaren geri gelir. Hiçbir sistem sürecine hook
+eklenmez. Uygulamayı kaldırmadan önce seçeneği kapatmak gerekir; aksi halde betik `/data/adb` altında kalır.
 
 ### Ses işleme
 
@@ -120,7 +130,9 @@ taşırıyorsa yumuşak limiter uygulanır.
 - Hook'lar olay tabanlıdır; yoklama ya da sürekli çalışan iş parçacığı yoktur. Override dizini bellekte tutulur ve
   yalnızca dizinin değişim zamanı sorgulanır.
 - Yalnızca ses akışındaki metotlar derlenmiş koddan çıkarılır (deopt).
-- Ayrıntılı olay kaydı varsayılan olarak kapalıdır.
+- Kulaklık uyarısı betiği yalnızca açılışta bir kez çalışır ve üç özellik ayarlayıp çıkar.
+- Ayrıntılı olay kaydı yalnızca ön sürümlerde bulunur ve varsayılan olarak kapalıdır; kararlı sürümde bu kod hiç
+  çalışmaz.
 
 ## Sorun giderme
 
@@ -130,29 +142,37 @@ taşırıyorsa yumuşak limiter uygulanır.
 - **Kilit sesi değişmedi:** Kilit sesleri Sistem Arayüzü açılırken yüklendiği için değişiklikten sonra Sistem Arayüzünün
   yenilenmesi gerekir (uygulama bunu sorar).
 - **Vector kartı kırmızı:** Modül etkin değil ya da kapsam eksik; kapsam ve yeniden başlatma kontrol edilmelidir.
-- **Tanılama:** Ayarlar → Araçlar → Tanı raporu. "Ayrıntılı olay kaydı" açıkken son SystemUI olayı da rapora yazılır.
+- **Tanılama:** Ayarlar → Araçlar → Tanı raporu oluştur. Ön sürümlerde "Ayrıntılı olay kaydı" açıkken son SystemUI
+  olayı da rapora yazılır.
+- **Kulaklık uyarısı hâlâ çıkıyor:** Kök yöneticisi `post-fs-data.d` betiklerini çalıştırmıyor olabilir ya da uyarıyı
+  açılışta okuyan özellikler üretici tarafından ezilmiş olabilir; seçeneği açıp cihazı yeniden başlat ve tanı raporuna bak.
 
 ## Derleme
 
-Gereksinimler: JDK 17 veya üzeri. Gradle sarmalayıcı jar dosyası ikili olduğu için depoda yer almaz.
+Gereksinimler: JDK 17 veya üzeri (CI JDK 21 kullanır). Gradle sarmalayıcı jar dosyası ikili olduğu için depoda yer
+almaz; sürüm `gradle/wrapper/gradle-wrapper.properties` dosyasından okunur.
 
 ```sh
-gradle wrapper --gradle-version 9.5.0   # bir kez
+gradle wrapper --gradle-version <gradle-wrapper.properties içindeki sürüm>   # bir kez
 ./gradlew assembleRelease
 ```
 
 `versionName` `app/build.gradle.kts` içindedir; `versionCode` CI çalışma numarasından gelir. Yerel derlemede imza
-anahtarı verilmezse sürüm APK'sı debug anahtarıyla imzalanır.
+anahtarı verilmezse sürüm APK'sı debug anahtarıyla imzalanır. Ayrıntılı olay kaydı yalnızca CI ön derlemesinde
+(`SOUNDMOD_VERBOSE=true`) APK'ya girer; yerel ve kararlı derlemelerde yoktur.
 
 ## CI/CD
 
 | Akış | Tetikleyici | Çıktı |
 |---|---|---|
-| `prebuild.yml` (Ön derleme) | Her push, PR ve elle | İmzalı APK (artifact) ve varsayılan dalda `pre-<çalışma no>` etiketli ön sürüm (son 10 saklanır) |
-| `release.yml` (Kararlı sürüm) | Yalnızca elle | `v<versionName>` etiketli kararlı sürüm; imza anahtarı yoksa başarısız olur, aynı sürüm numarası varsa durur |
+| `prebuild.yml` (Ön derleme) | Her push, PR ve elle | İmzalı APK (artifact, ayrıntılı olay kaydı dahil) ve varsayılan dalda `pre-<çalışma no>` etiketli ön sürüm (son 10 saklanır) |
+| `release.yml` (Kararlı sürüm) | Yalnızca elle | `v<versionName>` etiketli kararlı sürüm (ayrıntılı olay kaydı yok); imza anahtarı yoksa başarısız olur, aynı sürüm numarası varsa durur |
 | `build-apk.yml` | Yukarıdakiler çağırır | Ortak derleme ve imzalama adımları |
 | `codeql.yml` | Push, PR, haftalık | Java/Kotlin ve GitHub Actions için CodeQL analizi (`security-and-quality`) |
-| `dependabot.yml` | Haftalık | Gradle ve GitHub Actions sürüm güncellemeleri |
+| `dependabot.yml` | Haftalık | Gradle ve GitHub Actions sürüm güncellemeleri (gruplu); libxposed API'sinin büyük sürüm atlaması yok sayılır |
+
+Sürüm sayfaları GitHub CLI (`gh release create`) ile oluşturulur, üçüncü taraf yayın eklentisi kullanılmaz.
+`gradle/actions/setup-gradle` tam commit SHA'sına sabitlenmiştir; sürüm yorumunu Dependabot güncel tutar.
 
 ### İmza anahtarı
 
@@ -204,6 +224,7 @@ app/src/main/
   sesler için ilgili uygulamaların Vector kapsamına alınması ve ses dosyalarının uygulama süreçlerine aktarılması
   (Vector uzak dosya desteği) gerekir; henüz uygulanmamıştır.
 - Eski kamera API'sinin `cameraserver` içinde yerel kodla çaldığı deklanşör sesi hook'lanamaz.
+- Kulaklık uyarısı seçeneği kök yöneticisinin `/data/adb/post-fs-data.d` betiklerini çalıştırmasına bağlıdır.
 - Hook noktaları AOSP sınıf adlarına dayanır; üreticiye özel arayüzlerde sınıf adları farklıysa ilgili hook çalışmaz ve
   durum kartında hata olarak görünür.
 
