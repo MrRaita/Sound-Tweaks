@@ -1,0 +1,10 @@
+# zizmor (workflow güvenlik denetçisi) ayarı.
+# GitHub'ın kendi eylemleri (actions/*, github/*) sürüm etiketiyle kullanılabilir; diğer tüm üçüncü taraf eylemler
+# tam commit SHA'sına sabitlenmelidir.
+rules:
+  unpinned-uses:
+    config:
+      policies:
+        actions/*: ref-pin
+        github/*: ref-pin
+        "*": hash-pin

@@ -1,0 +1,270 @@
+name: Güvenlik ve kalite taraması
+
+# Ücretsiz otomatik denetimler. Sonuçlar Actions çıktılarında, özetlerde ve (CodeQL için) GitHub'da
+# Security > Code scanning sekmesinde görünür. CodeQL ve bağımlılık incelemesi herkese açık (public) depolarda
+# ücretsizdir; özel depoda GitHub Advanced Security gerekir, o zaman bu iki iş otomatik atlanır.
+on:
+  workflow_dispatch:
+  pull_request:
+    branches: [main, master]
+  push:
+    branches: [main, master]
+  schedule:
+    - cron: "23 4 * * 1"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: guvenlik-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  lint:
+    name: Android Lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Gradle sürümünü oku
+        id: gv
+        run: |
+          V=$(sed -n 's#.*gradle-\([0-9][0-9.]*\)-\(bin\|all\)\.zip.*#\1#p' gradle/wrapper/gradle-wrapper.properties | head -1)
+          test -n "$V" || { echo "::error::gradle-wrapper.properties içinde Gradle sürümü bulunamadı"; exit 1; }
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: ${{ steps.gv.outputs.version }}
+
+      - name: Lint çalıştır
+        run: gradle --no-daemon lintDebug
+
+      - name: Lint özeti
+        if: always()
+        run: |
+          f=app/build/reports/lint-results-debug.xml
+          if [ -f "$f" ]; then
+            python3 - "$f" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import collections, re, sys
+          t = open(sys.argv[1], encoding="utf-8", errors="replace").read()
+          c = collections.Counter(re.findall(r'<issue\s[^>]*?severity="(\w+)"', t))
+          print("### Android Lint özeti\n")
+          print("| Önem | Adet |\n|---|---|")
+          for k in ("Fatal", "Error", "Warning", "Informational"):
+              print(f"| {k} | {c.get(k, 0)} |")
+          PY
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: lint-raporu
+          path: app/build/reports/lint-results-debug.html
+          if-no-files-found: ignore
+
+  semgrep:
+    name: Semgrep (kural tabanlı güvenlik taraması)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    container:
+      image: semgrep/semgrep
+    steps:
+      - uses: actions/checkout@v7
+
+      # Bulgular işi başarısız yapmaz (rapor amaçlıdır); yalnızca aracın kendisi çökerse iş kırmızı olur.
+      - name: Semgrep tara
+        run: >
+          semgrep scan
+          --config p/default --config p/kotlin --config p/secrets --config p/github-actions
+          --metrics=off --sarif --output semgrep.sarif
+
+      - name: Semgrep özeti
+        if: always()
+        run: |
+          if [ -f semgrep.sarif ]; then
+            python3 - >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json
+          d = json.load(open("semgrep.sarif"))
+          res = [r for run in d.get("runs", []) for r in run.get("results", [])]
+          print("### Semgrep özeti\n")
+          print(f"Toplam bulgu: **{len(res)}**\n")
+          for r in res[:30]:
+              loc = r["locations"][0]["physicalLocation"]
+              print(f"- `{r['ruleId']}` — {loc['artifactLocation']['uri']}:{loc['region']['startLine']}")
+          PY
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: semgrep-raporu
+          path: semgrep.sarif
+          if-no-files-found: ignore
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    # Özel depoda GitHub Advanced Security olmadan çalışmaz; her seferinde kırmızı hata vermesin diye atlanır.
+    if: ${{ github.event.repository.private == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      security-events: write
+      packages: read
+      actions: read
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: java-kotlin
+            build-mode: manual
+          - language: actions
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: JDK kur
+        if: matrix.language == 'java-kotlin'
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Gradle sürümünü oku
+        if: matrix.language == 'java-kotlin'
+        id: gv
+        run: |
+          V=$(sed -n 's#.*gradle-\([0-9][0-9.]*\)-\(bin\|all\)\.zip.*#\1#p' gradle/wrapper/gradle-wrapper.properties | head -1)
+          test -n "$V" || { echo "::error::gradle-wrapper.properties içinde Gradle sürümü bulunamadı"; exit 1; }
+          echo "version=$V" >> "$GITHUB_OUTPUT"
+
+      - name: Gradle kur
+        if: matrix.language == 'java-kotlin'
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          gradle-version: ${{ steps.gv.outputs.version }}
+
+      - name: Gradle sarmalayıcıyı hazırla
+        if: matrix.language == 'java-kotlin'
+        run: |
+          if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
+            gradle wrapper --gradle-version "${{ steps.gv.outputs.version }}"
+          fi
+          chmod +x gradlew
+
+      - name: CodeQL başlat
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          queries: security-and-quality
+
+      - name: Derle (CodeQL için)
+        if: matrix.language == 'java-kotlin'
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
+
+      - name: CodeQL analizi
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: "/language:${{ matrix.language }}"
+
+  gizli-anahtar:
+    name: Gizli anahtar taraması (Gitleaks)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      # İmza anahtarı yalnızca GitHub Secrets'ta durmalı; depoya hiçbir zaman girmemeli.
+      - name: İmza anahtarı dosyası depoda var mı
+        run: |
+          found=$(git log --all --name-only --pretty=format: | grep -i -E '\.(jks|keystore|p12|pfx)$' | sort -u || true)
+          if [ -n "$found" ]; then
+            echo "::error::Depo geçmişinde anahtar dosyası bulundu:"
+            echo "$found"
+            exit 1
+          fi
+
+      # Bulgu varsa iş başarısız olur: sızan bir gizli anahtar geri alınmalıdır.
+      - name: Gitleaks (tüm git geçmişi)
+        run: |
+          docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest \
+            detect --source /repo --redact --report-format sarif --report-path /repo/gitleaks.sarif --verbose
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: gitleaks-raporu
+          path: gitleaks.sarif
+          if-no-files-found: ignore
+
+  workflow-guvenligi:
+    name: Workflow güvenliği (zizmor)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Bulgular işi başarısız yapmaz (rapor amaçlıdır); yalnızca aracın kendisi çökerse iş kırmızı olur.
+      - name: zizmor çalıştır
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          pipx install zizmor
+          set +e
+          zizmor --format sarif . > zizmor.sarif
+          rc=$?
+          set -e
+          if [ "$rc" -ne 0 ] && [ "$rc" -lt 10 ]; then
+            echo "::error::zizmor çalışamadı (çıkış kodu $rc)"
+            exit "$rc"
+          fi
+
+      - name: zizmor özeti
+        if: always()
+        run: |
+          if [ -s zizmor.sarif ]; then
+            python3 - >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import json
+          d = json.load(open("zizmor.sarif"))
+          res = [r for run in d.get("runs", []) for r in run.get("results", [])]
+          print("### zizmor özeti\n")
+          print(f"Toplam bulgu: **{len(res)}**\n")
+          for r in res[:30]:
+              loc = r["locations"][0]["physicalLocation"]
+              print(f"- `{r['ruleId']}` — {loc['artifactLocation']['uri']}:{loc['region']['startLine']}")
+          PY
+          fi
+
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: zizmor-raporu
+          path: zizmor.sarif
+          if-no-files-found: ignore
+
+  bagimlilik-incelemesi:
+    name: Bağımlılık incelemesi
+    # Yalnızca PR'larda ve herkese açık depoda: PR'ın eklediği/güncellediği bağımlılıklarda bilinen açık arar.
+    if: ${{ github.event_name == 'pull_request' && github.event.repository.private == false }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/dependency-review-action@v4
+        with:
+          fail-on-severity: high

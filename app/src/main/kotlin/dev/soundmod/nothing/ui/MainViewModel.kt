@@ -645,6 +645,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             echo "lock/unlock/trusted stok dosyalar:"; ls -lZ /*/media/audio/ui/ 2>/dev/null | grep -i -E "lock|trusted"
             echo "== ses dizinleri =="
             for d in /*/media/audio; do [ -d "${'$'}d" ] && echo "${'$'}d: ${'$'}(find "${'$'}d" -type f 2>/dev/null | wc -l) dosya, alt dizinler: ${'$'}(ls "${'$'}d" 2>/dev/null | tr '\n' ' ')"; done
+            echo "== kutuphanede listelenmeyen ses dizini dosyalari =="
+            for d in /*/media/audio; do
+              [ -d "${'$'}d" ] || continue
+              find "${'$'}d" -type f 2>/dev/null | grep -v -i -E '\.(ogg|wav|mp3|m4a|flac|opus|aac)${'$'}' | while read -r f; do ls -lZ "${'$'}f"; done
+              find "${'$'}d" -mindepth 4 -type f 2>/dev/null | while read -r f; do echo "derin: ${'$'}f"; done
+              find "${'$'}d" -type d 2>/dev/null | while read -r x; do ls -ldZ "${'$'}x"; done
+            done
             echo "== hook durumu =="; cat ${SoundPaths.STATUS_SYSTEM} 2>&1; echo
             settings get global ${SoundPaths.SYSUI_STATUS_KEY}
             echo "kilit sesi zorla cal: ${'$'}([ -e ${SoundPaths.FORCE_FLAG} ] && echo ACIK || echo kapali)"

@@ -168,9 +168,11 @@ anahtarı verilmezse sürüm APK'sı debug anahtarıyla imzalanır. Ayrıntılı
 | `prebuild.yml` (Ön derleme) | Her push, PR ve elle | İmzalı APK (artifact, ayrıntılı olay kaydı dahil) ve varsayılan dalda `pre-<çalışma no>` etiketli ön sürüm (son 10 saklanır) |
 | `release.yml` (Kararlı sürüm) | Yalnızca elle | `v<versionName>` etiketli kararlı sürüm (ayrıntılı olay kaydı yok); imza anahtarı yoksa başarısız olur, aynı sürüm numarası varsa durur |
 | `build-apk.yml` | Yukarıdakiler çağırır | Ortak derleme ve imzalama adımları |
-| `codeql.yml` | Push, PR, haftalık | Java/Kotlin ve GitHub Actions için CodeQL analizi (`security-and-quality`) |
+| `security.yml` (Güvenlik ve kalite taraması) | Push, PR, haftalık, elle | Android Lint, Semgrep, CodeQL (Java/Kotlin ve GitHub Actions, `security-and-quality`), Gitleaks (git geçmişinde gizli anahtar ve imza anahtarı dosyası), zizmor (workflow güvenliği), PR'larda bağımlılık incelemesi |
 | `dependabot.yml` | Haftalık | Gradle ve GitHub Actions sürüm güncellemeleri (gruplu); libxposed API'sinin büyük sürüm atlaması yok sayılır |
 
+Lint, Semgrep ve zizmor bulguları işi başarısız yapmaz; sonuçlar iş özetinde ve artifact olarak (`lint-raporu`,
+`semgrep-raporu`, `zizmor-raporu`) bulunur. Gitleaks, CodeQL ve bağımlılık incelemesi bulgu varsa işi başarısız yapar.
 Sürüm sayfaları GitHub CLI (`gh release create`) ile oluşturulur, üçüncü taraf yayın eklentisi kullanılmaz.
 `gradle/actions/setup-gradle` tam commit SHA'sına sabitlenmiştir; sürüm yorumunu Dependabot güncel tutar.
 

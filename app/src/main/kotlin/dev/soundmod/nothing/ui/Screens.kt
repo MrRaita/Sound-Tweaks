@@ -1348,7 +1348,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
         item {
             Text(
-                "SoundMod 0.11.7",
+                "SoundMod 0.11.8",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
