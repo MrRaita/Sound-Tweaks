@@ -198,6 +198,8 @@ private fun tabIcon(id: Int): ImageVector = when (id) {
     else -> Icons.Default.Settings
 }
 
+// Başlık listenin üstüne bindiği için Scaffold'ın verdiği iç boşluk bilerek kullanılmaz (listeler kendi üst boşluğunu alır)
+@Suppress("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun SoundModScreen(
     state: UiState,
@@ -1348,7 +1350,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
         item {
             Text(
-                "SoundMod 0.11.8",
+                "SoundMod 0.11.9",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)

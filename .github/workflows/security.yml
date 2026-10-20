@@ -26,6 +26,8 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-java@v6
         with:
@@ -73,17 +75,22 @@ jobs:
     name: Semgrep (kural tabanlı güvenlik taraması)
     runs-on: ubuntu-latest
     timeout-minutes: 20
-    container:
-      image: semgrep/semgrep
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # Bulgular işi başarısız yapmaz (rapor amaçlıdır); yalnızca aracın kendisi çökerse iş kırmızı olur.
+      # Dışarıda bırakılanlar: etiketle sabitlenmiş eylemler (zizmor ilkesi GitHub'ın kendi eylemlerine izin verir) ve
+      # başlatıcı etkinliğin dışa açık olması (uygulamanın tek ekranı, zorunlu).
       - name: Semgrep tara
-        run: >
-          semgrep scan
-          --config p/default --config p/kotlin --config p/secrets --config p/github-actions
-          --metrics=off --sarif --output semgrep.sarif
+        run: |
+          pipx install semgrep
+          semgrep scan \
+            --config p/default --config p/kotlin --config p/secrets --config p/github-actions \
+            --exclude-rule yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag \
+            --exclude-rule java.android.security.exported_activity.exported_activity \
+            --metrics=off --sarif --output semgrep.sarif
 
       - name: Semgrep özeti
         if: always()
@@ -129,6 +136,8 @@ jobs:
             build-mode: none
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: JDK kur
         if: matrix.language == 'java-kotlin'
@@ -153,9 +162,11 @@ jobs:
 
       - name: Gradle sarmalayıcıyı hazırla
         if: matrix.language == 'java-kotlin'
+        env:
+          GV: ${{ steps.gv.outputs.version }}
         run: |
           if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            gradle wrapper --gradle-version "${{ steps.gv.outputs.version }}"
+            gradle wrapper --gradle-version "$GV"
           fi
           chmod +x gradlew
 

@@ -14,7 +14,7 @@ android {
         targetSdk = 36
         // Her derlemede artsın diye CI çalışma numarasını kullanır
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.11.8"
+        versionName = "0.11.9"
         // Ayrıntılı olay kaydı yalnızca ön derlemede (SOUNDMOD_VERBOSE=true); kararlı sürümde ve yerelde yok
         buildConfigField("boolean", "VERBOSE_LOG", (System.getenv("SOUNDMOD_VERBOSE") == "true").toString())
     }
@@ -52,8 +52,12 @@ android {
     }
 
     lint {
-        abortOnError = false
+        // Lint hata (Error) bulursa "Android Lint" işi kırmızı olur; uyarılar işi bozmaz
+        abortOnError = true
         checkReleaseBuilds = false
+        // Hook'lar bilerek gizli sistem sınıflarına yansıma ile erişir; KTX önerisi stil tercihidir
+        disable += "PrivateApi"
+        disable += "UseKtx"
     }
 
     packaging {

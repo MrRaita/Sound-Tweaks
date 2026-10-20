@@ -274,6 +274,8 @@ class SoundModule : XposedModule() {
         }.start()
     }
 
+    // Durum dosyasını SoundMod uygulaması (başka uid) okur; bu yüzden herkese okunabilir yapılır
+    @Suppress("SetWorldReadable")
     private fun writeStatus(path: String, text: String) {
         try {
             val f = File(path)

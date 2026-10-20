@@ -12,6 +12,15 @@ on:
         description: Ayrıntılı olay kaydı özelliğini derlemeye kat (yalnızca ön derleme)
         type: boolean
         default: false
+    secrets:
+      SIGNING_KEYSTORE_BASE64:
+        required: false
+      SIGNING_KEYSTORE_PASSWORD:
+        required: false
+      SIGNING_KEY_ALIAS:
+        required: false
+      SIGNING_KEY_PASSWORD:
+        required: false
     outputs:
       version:
         description: app/build.gradle.kts içindeki versionName
@@ -31,6 +40,8 @@ jobs:
       signed: ${{ steps.keys.outputs.signed }}
     steps:
       - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - uses: actions/setup-java@v6
         with:
@@ -50,9 +61,11 @@ jobs:
 
       # Depoda gradle-wrapper.jar yoksa (ikili dosya) resmi sarmalayıcıyı üret
       - name: Gradle sarmalayıcıyı hazırla
+        env:
+          GV: ${{ steps.gv.outputs.version }}
         run: |
           if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            gradle wrapper --gradle-version "${{ steps.gv.outputs.version }}"
+            gradle wrapper --gradle-version "$GV"
           fi
           chmod +x gradlew
 

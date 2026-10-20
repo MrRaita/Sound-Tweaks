@@ -6,6 +6,9 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    # Yeni yayımlanan sürümler hemen alınmaz (kötü amaçlı/kararsız sürüm riski); güvenlik güncellemeleri etkilenmez
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 5
     groups:
       androidx:
@@ -26,6 +29,8 @@ updates:
     schedule:
       interval: "weekly"
       day: "monday"
+    cooldown:
+      default-days: 7
     groups:
       actions:
         patterns:
