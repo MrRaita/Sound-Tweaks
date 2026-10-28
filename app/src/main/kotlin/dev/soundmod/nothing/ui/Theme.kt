@@ -20,12 +20,12 @@ import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
 
 /**
- * Material 3 Expressive tema. Expressive'e özgü kısımlar (MaterialExpressiveTheme, MotionScheme)
- * yalnızca bu dosyada; kararlı M3'e dönmek gerekirse burası değişir.
+ * Material 3 Expressive theme. The Expressive-specific parts (MaterialExpressiveTheme, MotionScheme)
+ * live only in this file; if we ever need to go back to stable M3, only this file changes.
  *
- * @param themeMode 0 = sistem, 1 = açık, 2 = koyu
- * @param oled      true ise koyu temada (sistem koyuysa da) saf siyah yüzeyler kullanılır
- * @param dynamic   true ise (Android 12+) sistem/duvar kağıdı renkleri; değilse seçilen palet
+ * @param themeMode 0 = system, 1 = light, 2 = dark
+ * @param oled      if true, the dark theme (including when the system is dark) uses pure black surfaces
+ * @param dynamic   if true (Android 12+) system/wallpaper colors are used; otherwise the selected palette
  */
 @Composable
 fun SoundModTheme(
@@ -52,7 +52,7 @@ fun SoundModTheme(
         if (dark && oled) base.toOled() else base
     }
 
-    // Durum/gezinti çubuğu simgeleri uygulama temasına uysun (sistem temasından bağımsız seçilebildiği için)
+    // Make the status/navigation bar icons follow the app theme (it can be chosen independently of the system theme)
     val view = LocalView.current
     if (!view.isInEditMode) {
         SideEffect {
@@ -72,7 +72,7 @@ fun SoundModTheme(
     )
 }
 
-/** Arka plan ve yüzeyleri saf siyaha çeker; kartlar ayrışsın diye hafif açık siyah tonlar kullanılır. */
+/** Pulls the background and surfaces to pure black; slightly lighter blacks are used so cards stay distinguishable. */
 private fun ColorScheme.toOled(): ColorScheme = copy(
     background = Color.Black,
     surface = Color.Black,

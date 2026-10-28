@@ -4,12 +4,12 @@ import android.content.Context
 import android.net.Uri
 import java.io.File
 
-/** Sonuç bilgisi: seviye ölçümü (varsa) */
+/** Result info: level measurement (if any) */
 data class ApplyInfo(val stats: AudioConverter.Stats?, val normalized: Boolean) {
     fun summary(): String = stats?.summary(normalized) ?: ""
 }
 
-/** Root ile ses dosyalarını dağıtır ve Settings.Global yollarını yönetir. */
+/** Deploys sound files through root and manages Settings.Global paths. */
 class SoundRepository(private val ctx: Context) {
     private val prefs = ctx.getSharedPreferences("soundmod", Context.MODE_PRIVATE)
     private val srcDir = File(ctx.filesDir, "src")
@@ -21,15 +21,15 @@ class SoundRepository(private val ctx: Context) {
         prefs.edit().apply { if (v == null) remove("label_${slot.id}") else putString("label_${slot.id}", v) }.apply()
     }
 
-    /** Uygulamanın okuyabildiği, önizleme için çalınacak dosya (özel/seçilmiş ses) */
+    /** File the app can read and play for previews (the custom/selected sound) */
     fun previewPath(slot: SoundSlot): String? =
         prefs.getString("prev_${slot.id}", null)?.takeIf { File(it).isFile }
 
-    /** Yeniden işlenebilen kaynak var mı */
+    /** Whether a source exists that can be reprocessed */
     fun hasSource(slot: SoundSlot): Boolean =
         label(slot) != null && prefs.getString("srcpath_${slot.id}", null)?.let { File(it).isFile } == true
 
-    /** Ses seçilmemişken çalınacak stok dosya */
+    /** Stock file to play when no sound is selected */
     fun stockPath(slot: SoundSlot, library: List<SystemSound>): String? = when (slot.type) {
         SlotType.HOOK_FILE ->
             library.firstOrNull { it.name.equals(slot.key, ignoreCase = true) }?.path
@@ -42,12 +42,13 @@ class SoundRepository(private val ctx: Context) {
 
     // ---- Depo ----
 
-    /** Depo (dizinler, sahiplik, SELinux bağlamı) probe sırasında bir kez hazırlanır. */
+    /** The store (directories, ownership, SELinux context) is prepared once during the probe. */
     @Volatile private var storeReady = false
 
     fun probe(): Probe {
         val p = RootProbe.run()
-        if (p.granted) storeReady = true
+        // Root alone does not mean the store is usable; only a successful prepare chain marks it ready
+        storeReady = p.granted && p.storeOk
         return p
     }
 
@@ -55,14 +56,14 @@ class SoundRepository(private val ctx: Context) {
         val b = Root.q(SoundPaths.BASE)
         val r = Root.run(
             "mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && " +
-                "chown -R system:system $b && chmod -R 755 $b && " +
+                "chown -R system:system $b && ${SoundPaths.storePermsCmd(SoundPaths.BASE)} && " +
                 "(chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b)"
         )
         if (r.ok) storeReady = true
         return r
     }
 
-    /** Kilit sesleri "zorla çal" modu (bayrak dosyası). Varsayılan kapalı = stok mekanizma. */
+    /** "Force play" mode for lock sounds (flag file). Off by default = stock mechanism. */
     fun setForceLock(on: Boolean): Root.Result {
         val f = Root.q(SoundPaths.FORCE_FLAG)
         return Root.run(
@@ -71,14 +72,14 @@ class SoundRepository(private val ctx: Context) {
     }
 
     /**
-     * Kulaklık ses uyarısını kapatır/açar: /data/adb/soundmod altına, açılışta yalnızca üç sistem özelliğini
-     * ayarlayan küçük bir betik yazar ve post-fs-data.d'den çağırır. Sisteme kanca atılmaz. Açılırken
-     * özellikler hemen de ayarlanır; kapatılırken betik silinir, stok davranış sonraki açılışta döner.
+     * Turns the headphone volume warning off/on: writes a tiny script under /data/adb/soundmod that sets only three
+     * system properties at boot and is called from post-fs-data.d. No hook is installed. When enabled the properties
+     * are also set immediately; when disabled the script is deleted and stock behavior returns on the next boot.
      */
     fun setNoHpWarning(on: Boolean): Root.Result {
         if (!on) return Root.run("rm -f ${Root.q(SoundPaths.HP_LAUNCHER)} ${Root.q(SoundPaths.HP_SCRIPT)}; rmdir ${Root.q(SoundPaths.HP_DIR)} 2>/dev/null; true")
         val script = "#!/system/bin/sh\n" +
-            "# SoundMod: kulaklık yüksek ses uyarısını kapatır (sistem açılışında çalışır)\n" +
+            "# SoundMod: disables the headphone high-volume warning (runs at boot)\n" +
             "P=setprop\n" +
             "command -v resetprop >/dev/null 2>&1 && P=resetprop\n" +
             "\$P audio.safemedia.bypass true\n" +
@@ -94,14 +95,14 @@ class SoundRepository(private val ctx: Context) {
         )
     }
 
-    /** Eski sürümlerden kalan, artık geçersiz yuva kayıtlarını (root gerektirmeden) unutur. */
+    /** Forgets stale slot records left over from older versions (no root needed). */
     fun forget(slot: SoundSlot) {
         prefs.edit().remove("label_${slot.id}").remove("prev_${slot.id}").remove("srcpath_${slot.id}").apply()
         File(srcDir, slot.id).delete()
         File(previewDir, "${slot.id}.wav").delete()
     }
 
-    /** Ayrıntılı olay kaydı: bayrak dosyası varken SystemUI hook'u son olayını yazar (varsayılan kapalı). */
+    /** Verbose event log: while the flag file exists the SystemUI hook writes its last event (off by default). */
     fun setDebug(on: Boolean): Root.Result {
         val f = Root.q(SoundPaths.DEBUG_FLAG)
         return Root.run(
@@ -110,29 +111,32 @@ class SoundRepository(private val ctx: Context) {
         )
     }
 
-    fun restartSystemUi() {
-        Root.run("pkill -f com.android.systemui || killall com.android.systemui")
-    }
+    /** Restarts SystemUI by exact process name (never a substring match) and reports whether it worked. */
+    fun restartSystemUi(): Root.Result =
+        Root.run("pids=\$(pidof com.android.systemui) && [ -n \"\$pids\" ] && kill \$pids")
 
-    // ---- Uygulama ----
+    // ---- Applying ----
 
     fun applySystem(slot: SoundSlot, sound: SystemSound, opt: AudioConverter.Options): Result<ApplyInfo> =
-        applyFrom(slot, File(sound.path), "Sistem: ${sound.name}", opt)
+        applyFrom(slot, File(sound.path), "System: ${sound.name}", opt)
 
     fun applyCustom(slot: SoundSlot, uri: Uri, displayName: String, opt: AudioConverter.Options): Result<ApplyInfo> {
         return try {
             srcDir.mkdirs()
-            val copy = File(srcDir, slot.id)
+            clearSourceCopies(slot)
+            // Keep the picked file's real extension so it is never redistributed under a wrong one
+            val ext = extensionOf(uri, displayName)
+            val copy = File(srcDir, "${slot.id}.$ext")
             ctx.contentResolver.openInputStream(uri)?.use { input ->
                 copy.outputStream().use { input.copyTo(it) }
-            } ?: return Result.failure(IllegalStateException("Dosya açılamadı"))
-            applyFrom(slot, copy, "Dosya: $displayName", opt)
+            } ?: return Result.failure(IllegalStateException("Could not open the file"))
+            applyFrom(slot, copy, "File: $displayName", opt)
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    /** Seçilen sesi susturur (kısa sessiz bir dosya yerleştirir). */
+    /** Mutes the selected sound (installs a short silent file). */
     fun applySilence(slot: SoundSlot): Result<ApplyInfo> {
         return try {
             previewDir.mkdirs()
@@ -140,18 +144,18 @@ class SoundRepository(private val ctx: Context) {
             AudioConverter.writeSilence(wav)
             val r = deploy(slot, wav, "wav", direct = false)
             if (r.isFailure) return Result.failure(r.exceptionOrNull()!!)
-            remember(slot, "Sessiz", wav.absolutePath, wav.absolutePath)
+            remember(slot, "Silent", wav.absolutePath, wav.absolutePath)
             Result.success(ApplyInfo(null, false))
         } catch (e: Exception) {
             Result.failure(e)
         }
     }
 
-    /** Kayıtlı kaynağı güncel normalize ayarıyla yeniden uygular */
+    /** Re-applies the saved source with the current normalization settings */
     fun reprocess(slot: SoundSlot, opt: AudioConverter.Options): Result<ApplyInfo> {
-        val label = label(slot) ?: return Result.failure(IllegalStateException("Özel ses yok"))
+        val label = label(slot) ?: return Result.failure(IllegalStateException("No custom sound"))
         val src = prefs.getString("srcpath_${slot.id}", null)?.let { File(it) }
-        if (src == null || !src.isFile) return Result.failure(IllegalStateException("Kaynak dosya yok"))
+        if (src == null || !src.isFile) return Result.failure(IllegalStateException("Source file is missing"))
         return applyFrom(slot, src, label, opt)
     }
 
@@ -163,23 +167,23 @@ class SoundRepository(private val ctx: Context) {
                 val c = if (orig == null || orig == "null" || orig.isBlank())
                     "settings delete global ${slot.key}"
                 else "settings put global ${slot.key} ${Root.q(orig)}"
-                Root.run("$c; rm -f ${Root.q(SoundPaths.FILES_DIR)}/${slot.key}.*")
+                Root.run("$c && rm -f ${Root.q(SoundPaths.FILES_DIR)}/${slot.key}.*")
             }
         }
         if (!r.ok) return Result.failure(IllegalStateException(r.out))
         setLabel(slot, null)
         prefs.edit().remove("prev_${slot.id}").remove("srcpath_${slot.id}").apply()
-        File(srcDir, slot.id).delete()
+        clearSourceCopies(slot)
         File(previewDir, "${slot.id}.wav").delete()
         return Result.success(Unit)
     }
 
-    // ---- İç ----
+    // ---- Internal ----
 
     /**
-     * Kaynak dosyayı (normalize açıksa dönüştürüp) depoya koyar.
-     * Normalize kapalıysa dosya olduğu gibi kopyalanır; Settings yuvalarında sistem dosyaları
-     * kopyalanmadan doğrudan yolla gösterilir.
+     * Puts the source file into the store (converted first if normalization is on).
+     * With normalization off the file is copied as is; for Settings slots, system files are
+     * referenced directly by path without copying.
      */
     private fun applyFrom(slot: SoundSlot, src: File, label: String, opt: AudioConverter.Options): Result<ApplyInfo> {
         return try {
@@ -206,6 +210,27 @@ class SoundRepository(private val ctx: Context) {
         }
     }
 
+    /** Removes the app's private copies of a slot's source file (any extension). */
+    private fun clearSourceCopies(slot: SoundSlot) {
+        srcDir.listFiles()?.filter { it.name == slot.id || it.name.startsWith("${slot.id}.") }?.forEach { it.delete() }
+    }
+
+    /** Extension from the display name, else from the MIME type; unknown types fall back to "ogg". */
+    private fun extensionOf(uri: Uri, displayName: String): String {
+        val fromName = displayName.substringAfterLast('.', "").lowercase()
+        if (fromName in SoundPaths.EXTENSIONS) return fromName
+        val mime = ctx.contentResolver.getType(uri)?.lowercase().orEmpty()
+        return when {
+            "wav" in mime -> "wav"
+            "mpeg" in mime || "mp3" in mime -> "mp3"
+            "mp4" in mime || "m4a" in mime -> "m4a"
+            "flac" in mime -> "flac"
+            "opus" in mime -> "opus"
+            "aac" in mime -> "aac"
+            else -> "ogg"
+        }
+    }
+
     private fun remember(slot: SoundSlot, label: String, previewPath: String, srcPath: String) {
         setLabel(slot, label)
         prefs.edit().putString("prev_${slot.id}", previewPath).putString("srcpath_${slot.id}", srcPath).apply()
@@ -214,7 +239,7 @@ class SoundRepository(private val ctx: Context) {
     private fun deploy(slot: SoundSlot, src: File, ext: String, direct: Boolean): Result<Unit> {
         if (!storeReady) {
             val st = ensureStore()
-            if (!st.ok) return Result.failure(IllegalStateException("Depo hazırlanamadı: ${st.out}"))
+            if (!st.ok) return Result.failure(IllegalStateException("Could not prepare the sound store: ${st.out}"))
         }
 
         val fix = { dest: String ->
@@ -244,7 +269,7 @@ class SoundRepository(private val ctx: Context) {
                 }
             }
         }
-        if (!r.ok) return Result.failure(IllegalStateException(r.out.ifBlank { "Komut başarısız (${r.code})" }))
+        if (!r.ok) return Result.failure(IllegalStateException(r.out.ifBlank { "Command failed (${r.code})" }))
         return Result.success(Unit)
     }
 

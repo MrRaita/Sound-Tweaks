@@ -10,18 +10,18 @@ data class SystemSound(
 )
 
 object SoundScanner {
-    /** Kök dizin okunamazsa kullanılan bilinen bölümler (Nothing OS: yalnızca /product dolu) */
+    /** Known partitions used when the root directory cannot be listed (Nothing OS: only /product is populated) */
     private val KNOWN = listOf(
         "system", "system_ext", "product", "odm", "vendor",
         "my_product", "my_region", "my_stock", "my_heytap"
     )
 
-    /** Kök dizinde bulunmayacak, ses deposu olmayan girdiler */
+    /** Root entries that are never sound stores */
     private val SKIP = setOf("proc", "sys", "dev", "data", "storage", "sdcard", "mnt", "acct", "config", "apex")
 
     /**
-     * `/<bölüm>/media/audio` dizinlerini üreticiye göre tahmin etmeden keşfeder: kökteki her bölüm denenir (One UI,
-     * HyperOS, ColorOS vb. ek bölümleri de kapsar). Aynı yere çözülen bağlantılar (ör. /system/product) tek sayılır.
+     * Discovers `/<partition>/media/audio` directories without guessing per vendor: every partition at the root is
+     * tried (this also covers extra partitions on One UI, HyperOS, ColorOS, etc.). Links resolving to the same place (e.g. /system/product) count once.
      */
     private fun roots(): List<Pair<String, File>> {
         val names = ((File("/").list()?.toList() ?: emptyList()) + KNOWN).distinct().filter { it !in SKIP }.sorted()
@@ -36,7 +36,7 @@ object SoundScanner {
         return out
     }
 
-    private val AUDIO_EXT = setOf("ogg", "wav", "mp3", "m4a", "flac", "opus", "aac")
+    private val AUDIO_EXT = SoundPaths.EXTENSIONS.toSet()
 
     fun scan(): List<SystemSound> {
         val out = ArrayList<SystemSound>()
@@ -52,9 +52,9 @@ object SoundScanner {
 
     private fun categoryOf(f: File): String = when (f.parentFile?.name?.lowercase()) {
         "ui" -> "UI"
-        "ringtones" -> "Zil sesleri"
-        "notifications" -> "Bildirimler"
-        "alarms" -> "Alarmlar"
-        else -> "Diğer"
+        "ringtones" -> "Ringtones"
+        "notifications" -> "Notifications"
+        "alarms" -> "Alarms"
+        else -> "Other"
     }
 }

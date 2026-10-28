@@ -28,16 +28,16 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import kotlinx.coroutines.delay
 
-/** Listelerin alt boşluğu: yüzen çubukta çubuğun altında kalmasın diye büyür. */
+/** Bottom gap of lists: grows so the last rows do not end up under the floating bar. */
 val LocalListBottomPadding = compositionLocalOf { 24.dp }
 
-/** Listelerin üst boşluğu: başlık listenin üstüne bindiği için ilk satır başlığın altından başlar. */
+/** Top gap of lists: the header overlays the list, so the first row starts below the header. */
 val LocalListTopPadding = compositionLocalOf { 0.dp }
 
-/** Başlığın o anki (kaydırmayla daralan) yüksekliği, piksel; yalnızca yerleşim aşamasında okunmalıdır. */
+/** Current height of the header in pixels (it shrinks while scrolling); read it only in the layout phase. */
 val LocalHeaderHeight = compositionLocalOf<() -> Int> { { 0 } }
 
-/** "Animasyonları azalt" ayarı; efekt üreten modifier'lar bunu okur. */
+/** The "Reduce animations" setting; effect-producing modifiers read it. */
 val LocalReduceMotion = compositionLocalOf { false }
 
 /** Core ikon setinde olmayan duraklat ikonu */
@@ -62,7 +62,7 @@ val PauseIcon: ImageVector by lazy {
     }.build()
 }
 
-/** Gruplu liste görünümü: ilk ve son öğe büyük yuvarlak, aradakiler küçük. */
+/** Grouped list look: the first and last items have large rounded corners, the ones in between small. */
 fun segmentShape(index: Int, count: Int, big: Dp = 28.dp, small: Dp = 6.dp): Shape {
     val top = if (index == 0) big else small
     val bottom = if (index == count - 1) big else small
@@ -70,8 +70,8 @@ fun segmentShape(index: Int, count: Int, big: Dp = 28.dp, small: Dp = 6.dp): Sha
 }
 
 /**
- * Liste satırları için giriş efekti: yalnızca liste ilk açılırken (kaydırma yokken) satırlar sırayla yukarı kayarak
- * belirir. Kaydırma sırasında satırlara hiçbir efekt uygulanmaz.
+ * Entry effect for list rows: only when the list first opens (while not scrolling) do the rows slide up one after another
+ * and fade in. No effect is applied to rows while scrolling.
  */
 @Composable
 fun Modifier.staggerIn(index: Int, listState: LazyListState): Modifier {
@@ -93,7 +93,7 @@ fun Modifier.staggerIn(index: Int, listState: LazyListState): Modifier {
     }
 }
 
-/** Basılınca yaylanan küçülme efekti. */
+/** Springy shrink effect while pressed. */
 @Composable
 fun Modifier.pressScale(source: InteractionSource): Modifier {
     val reduce = LocalReduceMotion.current
@@ -109,22 +109,22 @@ fun Modifier.pressScale(source: InteractionSource): Modifier {
     }
 }
 
-/** Çal / duraklat düğmesi; ikon yumuşakça değişir. */
+/** Play / pause button; the icon changes smoothly. */
 @Composable
 fun PlayPauseButton(playing: Boolean, onClick: () -> Unit) {
     FilledTonalIconButton(onClick = onClick) {
         Crossfade(targetState = playing, label = "playpause") { p ->
             Icon(
                 imageVector = if (p) PauseIcon else Icons.Default.PlayArrow,
-                contentDescription = if (p) "Duraklat" else "Çal"
+                contentDescription = if (p) "Pause" else "Play"
             )
         }
     }
 }
 
 /**
- * Çalma durumu. İlerleme sürekli güncellenmez (arka plan iş yükü yok): çalma konumu ve bu konumun alındığı
- * an (SystemClock.elapsedRealtime) tutulur; çubuk kareden kareye bu iki değerden kendi hesaplanır.
+ * Playback state. Progress is not updated continuously (no background work): the playback position and the time
+ * it was taken (SystemClock.elapsedRealtime) are kept, and the bar computes itself from these two values frame by frame.
  */
 data class PlayerUi(
     val key: String? = null,

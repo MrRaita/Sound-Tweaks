@@ -1,12 +1,12 @@
-name: Kararlı sürüm
+name: Stable release
 
-# Yalnızca elle çalıştırılır (Actions → Kararlı sürüm → Run workflow). Sürüm numarası
-# app/build.gradle.kts içindeki versionName'dir; yayın anahtarı yoksa derleme başarısız olur.
+# Runs manually only (Actions → Stable release → Run workflow). The version number is
+# versionName in app/build.gradle.kts; the build fails if there is no release key.
 on:
   workflow_dispatch:
     inputs:
       notes:
-        description: Ek sürüm notu (isteğe bağlı)
+        description: Extra release notes (optional)
         required: false
         default: ""
 
@@ -35,17 +35,17 @@ jobs:
           name: SoundMod-apk
           path: dist
 
-      - name: Sürüm etiketi çakışmasını kontrol et
+      - name: Check for a release tag conflict
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           if gh release view "v${VERSION}" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
-            echo "::error::v${VERSION} sürümü zaten var. app/build.gradle.kts içindeki versionName artırılmalı."
+            echo "::error::Release v${VERSION} already exists. Bump versionName in app/build.gradle.kts."
             exit 1
           fi
 
-      - name: Kararlı sürüm oluştur
+      - name: Create the stable release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.version }}

@@ -17,16 +17,16 @@ import io.github.libxposed.api.XposedModuleInterface
 import java.io.File
 
 /**
- * libxposed API 101 giriş sınıfı.
+ * libxposed API 101 entry class.
  *
- *  - system_server ("system" kapsamı): SoundEffectsHelper.getResourceFilePath çıktısını,
- *    /data/system/soundmod/override/<stokAdı>.* varsa onunla değiştirir (klavye/dokunma sesleri).
+ *  - system_server ("system" scope): replaces the output of SoundEffectsHelper.getResourceFilePath
+ *    with /data/system/soundmod/override/<stockName>.* when present (keyboard/touch sounds).
  *  - SystemUI:
- *      · ScreenshotSoundProviderImpl.getScreenshotSound → özel dosyayla MediaPlayer
- *      · KeyguardViewMediator.playSounds / playTrustedSound → kilit, kilit açma, güvenilir cihaz
- *        sesleri; özel dosya varsa onu biz çalarız, yoksa stok davranış sürer.
+ *      · ScreenshotSoundProviderImpl.getScreenshotSound → MediaPlayer with the custom file
+ *      · KeyguardViewMediator.playSounds / playTrustedSound → lock, unlock and trusted-device
+ *        sounds; we play the custom file if there is one, otherwise stock behavior continues.
  *
- * Her hook ayrı try/catch içinde; hata olursa stok davranışa düşer.
+ * Every hook sits in its own try/catch; on failure the stock behavior is used.
  */
 class SoundModule : XposedModule() {
 
@@ -38,7 +38,7 @@ class SoundModule : XposedModule() {
             hookSoundEffects(param.classLoader)
             parts += "SoundEffectsHelper OK"
         } catch (t: Throwable) {
-            parts += "SoundEffectsHelper HATA: ${t.javaClass.simpleName}: ${t.message}"
+            parts += "SoundEffectsHelper ERROR: ${t.javaClass.simpleName}: ${t.message}"
             log(Log.ERROR, TAG, "SoundEffectsHelper hook failed", t)
         }
         writeStatus(SoundPaths.STATUS_SYSTEM, "system_server: ${parts.joinToString(", ")}")
@@ -52,29 +52,32 @@ class SoundModule : XposedModule() {
             hookScreenshot(param.classLoader)
             parts += "Screenshot OK"
         } catch (t: Throwable) {
-            parts += "Screenshot HATA: ${t.javaClass.simpleName}: ${t.message}"
+            parts += "Screenshot ERROR: ${t.javaClass.simpleName}: ${t.message}"
             log(Log.ERROR, TAG, "Screenshot hook failed", t)
         }
         try {
             parts += "Keyguard ${hookKeyguard(param.classLoader)}"
         } catch (t: Throwable) {
-            parts += "Keyguard HATA: ${t.javaClass.simpleName}: ${t.message}"
+            parts += "Keyguard ERROR: ${t.javaClass.simpleName}: ${t.message}"
             log(Log.ERROR, TAG, "Keyguard hook failed", t)
         }
         putGlobal(SoundPaths.SYSUI_STATUS_KEY, "SystemUI: ${parts.joinToString(", ")} [$frameworkName $frameworkVersion, API $apiVersion]")
     }
 
     // ---------------------------------------------------------------------------------------
-    // system_server: klavye ve dokunma sesleri
+    // system_server: keyboard and touch sounds
     // ---------------------------------------------------------------------------------------
 
     private fun hookSoundEffects(cl: ClassLoader) {
         val clazz = Class.forName("com.android.server.audio.SoundEffectsHelper", false, cl)
         val method = clazz.declaredMethods.firstOrNull {
             it.name == "getResourceFilePath" && it.parameterTypes.size == 1
-        } ?: error("getResourceFilePath bulunamadı")
+        } ?: error("getResourceFilePath not found")
 
-        // Satır içine alınmış (inline) çağrıları engellemek için sınıftaki diğer metotları deopt et
+        // The JIT may inline getResourceFilePath into any caller in this class (including private lambdas and
+        // synthetic accessors), which would silently bypass the hook. The set of callers cannot be known reliably
+        // across OEM builds, so every other method of this one small helper class is deoptimized. Scope is limited to
+        // this class only; the target method itself is hooked, not deoptimized.
         clazz.declaredMethods.forEach { m ->
             if (m != method) runCatching { deoptimize(m) }
         }
@@ -92,14 +95,14 @@ class SoundModule : XposedModule() {
     }
 
     // ---------------------------------------------------------------------------------------
-    // SystemUI: ekran görüntüsü
+    // SystemUI: screenshot
     // ---------------------------------------------------------------------------------------
 
     private fun hookScreenshot(cl: ClassLoader) {
         val clazz = Class.forName("com.android.systemui.screenshot.ScreenshotSoundProviderImpl", false, cl)
         val method = clazz.declaredMethods.firstOrNull {
             it.name == "getScreenshotSound" && it.parameterTypes.isEmpty()
-        } ?: error("getScreenshotSound bulunamadı")
+        } ?: error("getScreenshotSound not found")
 
         hook(method).intercept { chain ->
             val orig = chain.proceed()
@@ -122,19 +125,19 @@ class SoundModule : XposedModule() {
     }
 
     // ---------------------------------------------------------------------------------------
-    // SystemUI: kilit, kilit açma, güvenilir cihaz  (YALNIZCA "zorla çal" modu açıkken)
+    // SystemUI: lock, unlock, trusted device  (ONLY while "force play" mode is on)
     // ---------------------------------------------------------------------------------------
 
     /**
-     * Varsayılan: hiçbir şeye dokunulmaz; stok mekanizma Settings.Global yolundaki sesi (lock_sound vb.)
-     * kendi kuralları ve ses akışıyla çalar.
+     * Default: nothing is touched; the stock mechanism plays the sound at the Settings.Global path (lock_sound etc.)
+     * with its own rules and audio stream.
      *
-     * Kullanıcı "zorla çal" modunu açtıysa (bayrak dosyası) SystemUI açılırken burada keyguard çağrıları
-     * yakalanır: özel ses SoundPool ile medya ses seviyesinden çalınır, böylece sessiz/titreşim modu ve
-     * sistem sesi 0 iken de duyulur. "Kilit ekranı sesleri" ayarı kapalıysa stok davranış korunur.
+     * If the user turned on "force play" mode (flag file), the keyguard calls are intercepted here when SystemUI
+     * starts: the custom sound is played with SoundPool at the media volume, so it is audible in silent/vibrate
+     * mode and with the system volume at 0. If the "lock screen sounds" setting is off, stock behavior is kept.
      */
     private fun hookKeyguard(cl: ClassLoader): String {
-        if (!File(SoundPaths.FORCE_FLAG).exists()) return "stok (zorla çalma kapalı)"
+        if (!File(SoundPaths.FORCE_FLAG).exists()) return "stock (force play off)"
 
         val clazz = Class.forName("com.android.systemui.keyguard.KeyguardViewMediator", false, cl)
         val boolType = java.lang.Boolean.TYPE
@@ -144,11 +147,11 @@ class SoundModule : XposedModule() {
         val playTrusted = clazz.declaredMethods.firstOrNull {
             it.name == "playTrustedSound" && it.parameterTypes.isEmpty()
         }
-        if (playSounds == null && playTrusted == null) error("playSounds/playTrustedSound bulunamadı")
+        if (playSounds == null && playTrusted == null) error("playSounds/playTrustedSound not found")
 
-        // Küçük özel metotlar çağıranlarına satır içi derlenmiş olabilir. Sistemi az kurcalamak için yalnızca
-        // ses akışındaki çağıranları (çıkış bitişi, uykuya geçiş, *Sound*, erişim köprüleri) deopt ederiz;
-        // hiçbiri bulunamazsa (farklı ROM) sınıftaki tüm metotlara düşeriz.
+        // Small private methods may be inlined into their callers. To disturb the system as little as possible we
+        // only deoptimize callers in the sound flow (exit finished, going to sleep, *Sound*, access bridges); if none
+        // is found (a different ROM) we fall back to every method of the class.
         val others = clazz.declaredMethods.filter { it != playSounds && it != playTrusted }
         val callers = others.filter {
             it.name.contains("ExitFinished") || it.name.contains("GoingToSleep") || it.name.contains("Sound")
@@ -171,10 +174,10 @@ class SoundModule : XposedModule() {
             hooked += "playTrustedSound"
         }
 
-        // SoundPool, uygulama bağlamı (kimlik/paket bilgisi) hazır olmadan kurulursa ses çıkmayabilir;
-        // bu yüzden havuz erken değil, Sistem Arayüzü açıldıktan sonra kurulur ve sesler önden yüklenir.
+        // A SoundPool created before the application context (identity/package info) is ready may stay silent, so
+        // the pool is built only after SystemUI has started and the sounds are preloaded.
         preloadLater(0)
-        return "zorla çalma: ${hooked.joinToString("+")}"
+        return "force play: ${hooked.joinToString("+")}"
     }
 
     private fun preloadLater(tries: Int) {
@@ -190,25 +193,25 @@ class SoundModule : XposedModule() {
     }
 
     /**
-     * @return true = çağrıyı biz karşıladık ve ses gerçekten çalmaya başladı (stok çalma atlanır);
-     *         false = stok davranış sürsün. Biz çalamıyorsak (henüz yüklenmedi, hata, medya sesi 0...)
-     *         sessiz kalmamak için her zaman stok mekanizmaya bırakırız.
+     * @return true = we handled the call and the sound really started (stock playback is skipped);
+     *         false = let the stock behavior continue. If we cannot play (not loaded yet, error, media volume 0...)
+     *         we always leave it to the stock mechanism so the event is never silent.
      */
     private fun forcePlay(key: String, kind: String): Boolean {
         return try {
-            if (!File(SoundPaths.FORCE_FLAG).exists()) return false // mod kapatıldı: stok davranış
+            if (!File(SoundPaths.FORCE_FLAG).exists()) return false // mode turned off: stock behavior
             val path = FilesIdx.find(key) ?: return false
             val app = currentApp() ?: return false
             if (Settings.System.getInt(app.contentResolver, "lockscreen_sounds_enabled", 1) == 0) {
-                return false // kullanıcı kilit seslerini kapattı: stok davranış (çalmaz)
+                return false // user turned lock sounds off: stock behavior (silent)
             }
             val am = app.getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            if (am.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) return false // medya sesi kapalı: duyulmaz
+            if (am.getStreamVolume(AudioManager.STREAM_MUSIC) == 0) return false // media volume is zero: it would be inaudible
             val ok = ForcePlayer.play(path)
             if (BuildConfig.VERBOSE_LOG && File(SoundPaths.DEBUG_FLAG).exists()) {
                 putGlobal(
                     SoundPaths.SYSUI_LAST_KEY,
-                    "$kind: ${if (ok) "SoundPool çalındı" else "stok davranışa düşüldü"} [${ForcePlayer.lastInfo}] (${System.currentTimeMillis()})"
+                    "$kind: ${if (ok) "played with SoundPool" else "fell back to stock behavior"} [${ForcePlayer.lastInfo}] (${System.currentTimeMillis()})"
                 )
             }
             ok
@@ -225,7 +228,7 @@ class SoundModule : XposedModule() {
             .build()
 
     // ---------------------------------------------------------------------------------------
-    // Yardımcılar
+    // Helpers
     // ---------------------------------------------------------------------------------------
 
     @Volatile private var nameField: java.lang.reflect.Field? = null
@@ -254,8 +257,8 @@ class SoundModule : XposedModule() {
     }
 
     /**
-     * SystemUI /data/system'e yazamayabilir; durum ve olaylar Settings.Global'a yazılır (SystemUI'nin
-     * yetkisi var). Uygulama bağlamı henüz oluşmamış olabileceğinden hazır olana kadar bekler.
+     * SystemUI may not be able to write to /data/system; status and events are written to Settings.Global (which
+     * SystemUI is allowed to do). The application context may not exist yet, so this waits until it is ready.
      */
     private fun putGlobal(key: String, value: String) {
         Thread {
@@ -274,7 +277,7 @@ class SoundModule : XposedModule() {
         }.start()
     }
 
-    // Durum dosyasını SoundMod uygulaması (başka uid) okur; bu yüzden herkese okunabilir yapılır
+    // The SoundMod app (a different uid) reads the status file, so it is made world-readable
     @Suppress("SetWorldReadable")
     private fun writeStatus(path: String, text: String) {
         try {
@@ -283,7 +286,7 @@ class SoundModule : XposedModule() {
             f.writeText("$text [$frameworkName $frameworkVersion, API $apiVersion]")
             f.setReadable(true, false)
         } catch (t: Throwable) {
-            // durum dosyası yazılamazsa sorun değil
+            // it does not matter if the status file cannot be written
         }
     }
 
@@ -293,8 +296,8 @@ class SoundModule : XposedModule() {
 }
 
 /**
- * Bir dizinin içeriğini bellekte tutar. Her sorguda yalnızca dizinin değişim zamanına bakılır (tek stat);
- * içerik değiştiyse dizin bir kez okunur. Böylece olaylarda uzantı başına dosya sorgusu yapılmaz.
+ * Keeps a directory listing in memory. Each lookup only checks the directory's modification time (a single stat);
+ * the directory is read once when it changed, so events never cost one file lookup per extension.
  */
 private class DirIndex(path: String) {
     private val dir = File(path)
@@ -317,7 +320,7 @@ private class DirIndex(path: String) {
             return
         }
         val result = HashMap<String, String>()
-        for (ext in SoundPaths.EXTENSIONS) { // uzantı öncelik sırası
+        for (ext in SoundPaths.EXTENSIONS) { // extension priority order
             for (f in files) {
                 if (f.extension.lowercase() == ext && f.length() > 0) {
                     result.putIfAbsent(f.nameWithoutExtension, f.absolutePath)
@@ -332,8 +335,8 @@ private val OverrideIdx = DirIndex(SoundPaths.OVERRIDE_DIR)
 private val FilesIdx = DirIndex(SoundPaths.FILES_DIR)
 
 /**
- * "Zorla çal" modu için tek bir SoundPool (stok kilit sesinin de kullandığı motor), medya ses akışı.
- * Sesler yüklenip bellekte tutulur; olayda anında çalar. Dosya değişirse yeniden yüklenir.
+ * A single SoundPool for "force play" mode (the same engine the stock lock sound uses), on the media stream.
+ * Sounds are loaded and kept in memory so they play instantly on the event. A changed file is reloaded.
  */
 private object ForcePlayer {
     private class Entry(val id: Int, val stamp: Long, var loaded: Boolean, var status: Int = -1)
@@ -341,7 +344,7 @@ private object ForcePlayer {
     private var pool: SoundPool? = null
     private val entries = HashMap<String, Entry>()
 
-    /** Tanılama: son yükleme/çalma sonucu */
+    /** Diagnostics: result of the last load/play */
     @Volatile var lastInfo: String = "-"
 
     private fun ensurePool(): SoundPool {
@@ -362,7 +365,7 @@ private object ForcePlayer {
                     e.status = status
                     e.loaded = status == 0
                 }
-                lastInfo = "yükleme=$status"
+                lastInfo = "load=$status"
             }
         }
         pool = p
@@ -374,13 +377,13 @@ private object ForcePlayer {
         ensureLoaded(path)
     }
 
-    /** Yüklü değilse yükletir ve false döner (bu olayda stok çalsın, sonrakinde biz çalarız). */
+    /** Starts loading if not loaded yet and returns false (stock plays this time, we play next time). */
     @Synchronized
     fun play(path: String): Boolean {
         val e = ensureLoaded(path) ?: return false
         if (!e.loaded) return false
         val stream = ensurePool().play(e.id, 1f, 1f, 1, 0, 1f)
-        lastInfo = "akış=$stream"
+        lastInfo = "stream=$stream"
         return stream != 0
     }
 

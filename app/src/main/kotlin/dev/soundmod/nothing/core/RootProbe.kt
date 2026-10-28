@@ -2,7 +2,7 @@ package dev.soundmod.nothing.core
 
 import dev.soundmod.nothing.BuildConfig
 
-/** Root yöneticisi ve sistem hakkında kısa bilgi (Ayarlar'daki Root kartı) */
+/** Short info about the root manager and the system (the Root card in Settings) */
 data class RootInfo(
     val manager: String = "",
     val managerVersion: String = "",
@@ -13,19 +13,21 @@ data class RootInfo(
     val context: String = ""
 )
 
-/** Açılışta tek `su` çağrısıyla toplanan her şey */
+/** Everything collected with a single `su` call at startup */
 data class Probe(
     val granted: Boolean,
     val info: RootInfo,
     val hookStatus: String?,
     val debugLog: Boolean,
     val forceLock: Boolean,
-    val noHpWarning: Boolean
+    val noHpWarning: Boolean,
+    /** Root granted AND the sound store (dirs, owner, mode, SELinux context) was prepared successfully */
+    val storeOk: Boolean = false
 )
 
 /**
- * Uygulama açılışında root sorgularını tek bir `su` sürecinde toplar (her sorgu için ayrı süreç
- * açmak hem yavaş hem gereksiz iş). Aynı çağrı ses deposunu da hazırlar.
+ * Collects the root queries at app startup in a single `su` process (spawning a process per query
+ * would be slow and wasteful). The same call also prepares the sound store.
  */
 object RootProbe {
 
@@ -37,7 +39,7 @@ object RootProbe {
               ${if (BuildConfig.VERBOSE_LOG) "" else "rm -f " + Root.q(SoundPaths.DEBUG_FLAG) + "; settings delete global " + SoundPaths.SYSUI_LAST_KEY + " >/dev/null 2>&1"}
               rm -f ${Root.q(SoundPaths.BASE + "/.status_system")} ${Root.q(SoundPaths.OLD_HP_FLAG)}
               rm -f ${Root.q(SoundPaths.OVERRIDE_DIR)}/lock.* ${Root.q(SoundPaths.OVERRIDE_DIR)}/unlock.* ${Root.q(SoundPaths.OVERRIDE_DIR)}/trusted.*
-              mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && chown -R system:system $b && chmod -R 755 $b && (chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b)
+              mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && chown -R system:system $b && ${SoundPaths.storePermsCmd(SoundPaths.BASE)} && (chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b) && echo "store=ok"
             fi
             echo "ctx=${'$'}(id -Z 2>/dev/null)"
             echo "kernel=${'$'}(uname -r)"
@@ -73,12 +75,12 @@ object RootProbe {
             ksud.isNotBlank() -> { manager = "KernelSU"; version = ksud }
             magisk.isNotBlank() -> { manager = "Magisk"; version = (magisk + " " + kv["magiskc"].orEmpty()).trim() }
             apd.isNotBlank() -> { manager = "APatch"; version = apd }
-            else -> { manager = "Bilinmiyor"; version = "" }
+            else -> { manager = "Unknown"; version = "" }
         }
         val lkm = (kv["lkm"]?.toIntOrNull() ?: 0) > 0
         val mode = when {
-            manager == "KernelSU" && lkm -> "LKM (yüklenebilir çekirdek modülü)"
-            manager == "KernelSU" -> "Çekirdeğe yerleşik (GKI / özel çekirdek)"
+            manager == "KernelSU" && lkm -> "LKM (loadable kernel module)"
+            manager == "KernelSU" -> "Built into the kernel (GKI / custom kernel)"
             else -> ""
         }
         val info = RootInfo(
@@ -94,6 +96,6 @@ object RootProbe {
             kv["sys"]?.takeIf { it.isNotBlank() },
             kv["sysui"]?.takeIf { it.isNotBlank() && it != "null" }
         ).takeIf { it.isNotEmpty() }?.joinToString("\n")
-        return Probe(true, info, hook, kv["debug"] == "yes", kv["force"] == "yes", kv["nohp"] == "yes")
+        return Probe(true, info, hook, kv["debug"] == "yes", kv["force"] == "yes", kv["nohp"] == "yes", kv["store"] == "ok")
     }
 }

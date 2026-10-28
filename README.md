@@ -1,239 +1,262 @@
 # SoundMod
 
-Android sistem seslerini (klavye, dokunma, ekran görüntüsü, kilit ekranı, şarj, dock) değiştirmeye yarayan,
-LSPosed/Vector modülü ve yönetim uygulaması. Arayüz Material 3 Expressive ile yazılmıştır.
+🇬🇧 English · 🇹🇷 [Türkçe](README.tr.md)
 
-Sistem dosyaları değiştirilmez. Seçilen sesler ayrı bir depoda tutulur ve ilgili sistem süreçlerinde yalnızca
-ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler sıfırlandığında sistem kendi varsayılanlarına döner.
+An LSPosed/Vector module and management app that changes Android system sounds (keyboard, touch, screenshot,
+lock screen, charging, dock). The UI is written with Material 3 Expressive.
 
-## Özellikler
+No system files are modified. The chosen sounds are kept in a separate store and only the sound path is redirected
+inside the relevant system processes; when the module is disabled or the sounds are reset, the system returns to its
+own defaults.
 
-- Sesleri dosya yolundan değil, uygulama içinden seçme: sistem seslerinden, kullanıcının kendi dosyasından ya da
-  susturarak.
-- Sistem ses dizinlerinin taranıp listelendiği, dinlenebilen kütüphane (çal/duraklat, süreye bağlı dalgalı ilerleme çubuğu).
-- Her ses için ayrı normalize ayarı (genel, kapalı ya da özel hedef seviye); tepeler yumuşak limiter ile sınırlanır.
-- Dokunma, kilit ekranı ve şarj sesleri için sistem anahtarlarının durumunu gösterme ve değiştirme (zil modu ile ses
-  seviyeleri dahil).
-- İsteğe bağlı "zorla çal" modu: kilit sesleri sessiz/titreşim modunda da duyulacak şekilde medya ses akışından çalınır.
-- Sistem Arayüzünü yeniden başlatma düğmesi (ilk kullanımda uyarı gösterir, uyarı kapatılabilir).
-- Tema: sistem, açık, koyu; ayrı bir OLED (saf siyah) anahtarı, koyu temanın (sistem koyuya geçince de) siyah
-  olmasını sağlar. Material You renkleri ya da 12 hazır palet.
-- Yüzen alt gezinti çubuğu, iki genişlikte (geniş: seçili sekme simge ve yazıyla genişleyen hap; kompakt: yalnızca
-  simgeler ve kayan vurgu), sekme sırasını sürükle-bırak ile değiştirme ve sekmeleri gizleme.
-- Üst başlık aşağı kaydırınca daralır, uygulama adının yerine sekme adı geçer; başlık listenin üstüne biner, köşelerin
-  ardında liste görünür. Kütüphane sekmesinde arama satırı ve filtre çipleri başlığa bağlıdır, başlıkla birlikte yukarı kayar.
-- Kulaklıkta çıkan yüksek ses (kulak koruma) uyarısını kapatma seçeneği; sisteme kanca eklenmez, açılışta çalışan
-  küçük bir betik kullanılır.
-- Tanılama raporu (dosya izinleri, ayarlar, hook durumu, SELinux reddleri).
+## Features
 
-## Desteklenen sesler
+- Pick sounds inside the app instead of by file path: from system sounds, from your own file, or by muting.
+- A playable library that scans and lists the system sound directories (play/pause, a wavy progress bar tied to the
+  duration).
+- Per-sound normalization (global, off, or a custom target level); peaks are limited with a soft limiter.
+- Show and change the state of the system switches for touch, lock screen and charging sounds (including the ringer
+  mode and volume levels).
+- Optional "force play" mode: lock sounds are played on the media stream so they are audible in silent/vibrate mode.
+- A SystemUI restart button (it shows a warning on first use, which can be dismissed).
+- Theme: system, light, dark; a separate OLED (pure black) switch makes the dark theme black (also when the system
+  switches to dark). Material You colors or 12 ready-made palettes.
+- A floating bottom navigation bar in two widths (wide: the selected tab expands into a pill with icon and label;
+  compact: icons only with a sliding highlight), tab reordering by drag and drop, and hideable tabs.
+- The top header collapses when scrolling down and the tab name replaces the app name; the header overlays the list so
+  the list shows behind its corners. In the Library tab the search row and filter chips are attached to the header and
+  slide up with it.
+- An option to turn off the loud-volume (hearing protection) warning shown with headphones; no hook is added to the
+  system, a tiny script that runs at boot is used.
+- A diagnostic report (file permissions, settings, hook status, SELinux denials).
 
-| Grup | Sesler | Yöntem |
+## Supported sounds
+
+| Group | Sounds | Method |
 |---|---|---|
-| Klavye | Tuş, boşluk, silme, enter, geçersiz tuş | `system_server` hook'u |
-| Dokunma ve ekran | Dokunma tıkı, ekran görüntüsü | `system_server` hook'u, SystemUI hook'u |
-| Kilit ekranı | Kilitleme, kilit açma, güvenilir cihaz | `Settings.Global` yolu (varsayılan), isteğe bağlı SystemUI hook'u |
-| Şarj ve pil | Düşük pil, şarj, kablosuz şarj | `Settings.Global` yolu |
-| Dock | Masa/araç dock'u, dock'tan çıkarma | `Settings.Global` yolu |
+| Keyboard | Key, space, delete, enter, invalid key | `system_server` hook |
+| Touch and screen | Touch click, screenshot | `system_server` hook, SystemUI hook |
+| Lock screen | Lock, unlock, trusted device | `Settings.Global` path (default), optional SystemUI hook |
+| Charging and battery | Low battery, charging, wireless charging | `Settings.Global` path |
+| Dock | Desk/car dock, undock | `Settings.Global` path |
 
-Kamera, video kaydı, NFC ve ters şarj sesleri `system_server` ya da SystemUI dışındaki süreçlerde çalındığı için
-kapsam dışındadır (bkz. [Bilinen sınırlamalar](#bilinen-sınırlamalar)).
+Camera, video recording, NFC and reverse-charging sounds are played in processes other than `system_server` and
+SystemUI, so they are out of scope (see [Known limitations](#known-limitations)).
 
-## Gereksinimler
+## Requirements
 
-- Android 9 (API 28) veya üzeri
-- Root (KernelSU, Magisk ya da APatch); ek bir modül gerekmez. Kulaklık uyarısı seçeneği için kök yöneticisinin
-  `/data/adb/post-fs-data.d` dizinini çalıştırması gerekir (üçü de çalıştırır)
-- Vector (LSPosed) 2.1 veya üzeri, libxposed API 101 desteğiyle
+- Android 9 (API 28) or newer
+- Root (KernelSU, Magisk or APatch); no extra module is needed. For the headphone warning option the root manager
+  must run the `/data/adb/post-fs-data.d` directory (all three do)
+- Vector (LSPosed) 2.1 or newer, with libxposed API 101 support
 
-Geliştirme ve test ortamı: Nothing Phone (4a), Nothing OS 4.1, Android 16, KernelSU, Vector 2.2.
+Development and test environment: Nothing Phone (4a), Nothing OS 4.1, Android 16, KernelSU, Vector 2.2.
 
-## Kurulum
+## Installation
 
-1. APK, deponun **Releases** sayfasından (ya da **Actions** çıktısından) indirilip kurulur.
-2. Uygulama açılır ve root izni verilir.
-3. Vector yöneticisinde SoundMod etkinleştirilir. Kapsamda **Sistem Çerçevesi** ve **Sistem Arayüzü** seçili olmalıdır.
-4. Cihaz yeniden başlatılır.
-5. Uygulamada **Ayarlar** sekmesindeki Vector kartı kancaların aktif olduğunu göstermelidir.
+1. Download the APK from the repository's **Releases** page (or from the **Actions** output) and install it.
+2. Open the app and grant root access.
+3. Enable SoundMod in the Vector manager. **System Framework** and **System UI** must be selected in its scope.
+4. Reboot the device.
+5. In the app, the Vector card on the **Settings** tab should show that the hooks are active.
 
-## Kullanım
+## Usage
 
-- **Sesler:** Bir sese dokunulduğunda sistem seslerinden seçme, kendi dosyasını seçme, susturma ya da varsayılana
-  dönme seçenekleri açılır. Dosyalar çözülüp WAV olarak depoya yazılır.
-- **Kütüphane:** Bulunan sistem sesleri filtrelenir, arama simgesiyle aranır ve dinlenir.
-- **Gelişmiş:** Sistem ses anahtarları, ses işleme (genel ve ses başına normalize), kilit seslerini zorla çal,
-  kulaklık uyarısını kapat.
-- **Ayarlar:** Durum kartları (Root ve Vector modülü), tema ve renkler, alt çubuk düzeni, araçlar (Sistem Arayüzünü
-  yenileme, tanı raporu).
+- **Sounds:** Tapping a sound opens the options: choose from system sounds, choose your own file, mute, or reset to
+  default. Files are decoded and written to the store as WAV.
+- **Library:** The system sounds that were found can be filtered, searched with the search icon, and played.
+- **Advanced:** System sound switches, audio processing (global and per-sound normalization), force-play lock sounds,
+  and turning off the headphone warning.
+- **Settings:** Status cards (Root and Vector module), theme and colors, bottom bar layout, tools (SystemUI refresh,
+  diagnostic report).
 
-## Nasıl çalışır
+## How it works
 
-### Ses deposu
+### Sound store
 
-Seçilen sesler root ile `/data/system/soundmod` altına yazılır ve herkesin okuyabildiği `system_file` SELinux
-bağlamıyla işaretlenir.
+The chosen sounds are written under `/data/system/soundmod` through root and labeled with the world-readable
+`system_file` SELinux context. Directories are mode 755 and files are mode 644 (never executable).
 
-- `override/<StokAdı>.<uzantı>`: hook'ların yönlendirdiği dosyalar
-- `files/<ayarAnahtarı>.<uzantı>`: `Settings.Global` yollarının gösterdiği dosyalar
+- `override/<StockName>.<extension>`: files the hooks redirect to
+- `files/<settingKey>.<extension>`: files that `Settings.Global` paths point to
 
-Bağlam, uygulama her açıldığında ve her ses yazıldığında yeniden uygulanır. Sistem güncellemesi dosya bağlamlarını
-yeniden yazarsa uygulamanın bir kez açılması yeterlidir.
+The context is re-applied every time the app opens and every time a sound is written. If a system update rewrites the
+file contexts, opening the app once is enough. The store is only treated as ready when preparing it (directories,
+ownership, mode, SELinux context) actually succeeded, and it is retried otherwise.
 
-### Arayüz
+### Interface
 
-Üst başlık iki durumludur (geniş/dar); kaydırma eşiği aşılınca yaylı bir geçişle daralır, arka planı yükseklikle
-birlikte küçülür ve listenin üstüne biner. Liste satırlarına kaydırma sırasında efekt uygulanmaz; yalnızca liste ilk
-açılırken satırlar sırayla belirir. "Animasyonları azalt" açıkken geçişler sadeleşir.
+The top header has two states (wide/narrow); once the scroll threshold is passed it collapses with a springy
+transition, its background shrinks with the height, and it overlays the list. No effect is applied to list rows while
+scrolling; the rows only appear one after another when the list first opens. With "Reduce animations" on, transitions
+are simplified.
 
-### Hook'lar
+### Hooks
 
-libxposed API 101 ile yazılmıştır (`minApiVersion = targetApiVersion = 101`). Giriş sınıfı
-`dev.soundmod.nothing.hook.SoundModule`, meta veriler `app/src/main/resources/META-INF/xposed/` altındadır.
+Written against libxposed API 101 (`minApiVersion = targetApiVersion = 101`). The entry class is
+`dev.soundmod.nothing.hook.SoundModule`; the metadata lives under `app/src/main/resources/META-INF/xposed/`.
 
-| Süreç | Sınıf / metot | Amaç |
+| Process | Class / method | Purpose |
 |---|---|---|
-| `system_server` | `SoundEffectsHelper.getResourceFilePath` | Klavye ve dokunma sesi yollarını yönlendirir |
-| SystemUI | `ScreenshotSoundProviderImpl.getScreenshotSound` | Ekran görüntüsü sesini değiştirir |
-| SystemUI | `KeyguardViewMediator.playSounds`, `playTrustedSound` | Yalnızca "zorla çal" modunda kilit seslerini çalar |
+| `system_server` | `SoundEffectsHelper.getResourceFilePath` | Redirects keyboard and touch sound paths |
+| SystemUI | `ScreenshotSoundProviderImpl.getScreenshotSound` | Replaces the screenshot sound |
+| SystemUI | `KeyguardViewMediator.playSounds`, `playTrustedSound` | Plays lock sounds, only in "force play" mode |
 
-Vector kartında "Çerçeve" satırı Vector'ün kendi API sürümünü, "Modül API" satırı SoundMod'un derlendiği API'yi
-(101) gösterir; ikisinin farklı olması normaldir. Her hook ayrı bir `try/catch` içindedir; hata durumunda stok
-davranış sürer. Kilit sesleri varsayılanda stok
-mekanizmayla çalar: sistem `lock_sound`, `unlock_sound` ve `trusted_sound` ayarlarındaki yolu Sistem Arayüzü açılırken
-bir kez yükler. "Zorla çal" modu kapalıyken SystemUI'a hook eklenmez.
+On the Vector card the "Framework" row shows Vector's own API version and the "Module API" row shows the API
+SoundMod was built against (101); it is normal for them to differ. Every hook sits in its own `try/catch`; on failure
+the stock behavior continues. Lock sounds play through the stock mechanism by default: the system loads the path in
+the `lock_sound`, `unlock_sound` and `trusted_sound` settings once when SystemUI starts. While "force play" mode is off,
+no hook is added to SystemUI.
 
-### Kulaklık ses uyarısı
+### Headphone volume warning
 
-Android, yeniden başlatmadan sonra kulaklıkta ses belirli bir seviyenin üzerine çıkarılırken bir uyarı gösterir. Uyarıyı
-açılışta okunan üç sistem özelliği denetler. Seçenek açıldığında SoundMod şunları yapar:
+After a reboot, Android shows a warning when headphone volume is raised above a certain level. Three system
+properties read at boot control that warning. When the option is turned on, SoundMod:
 
-- `/data/adb/soundmod/hp_warning.sh` betiğini yazar; betik `audio.safemedia.bypass=true`,
-  `audio.safemedia.force=false` ve `audio.safemedia.csd.force=false` değerlerini ayarlar (`resetprop`, yoksa `setprop`).
-- Sistem başlamadan önce çalışsın diye `/data/adb/post-fs-data.d/soundmod_hp_warning.sh` içine yalnızca betiği çağıran
-  tek satır koyar.
-- Özellikleri o anda da bir kez ayarlar, böylece yeniden başlatma beklemek gerekmez.
+- writes the `/data/adb/soundmod/hp_warning.sh` script, which sets `audio.safemedia.bypass=true`,
+  `audio.safemedia.force=false` and `audio.safemedia.csd.force=false` (with `resetprop`, or `setprop` if missing);
+- puts a single line that only calls the script into `/data/adb/post-fs-data.d/soundmod_hp_warning.sh`, so that it
+  runs before the system starts;
+- also sets the properties once right away, so there is no need to wait for a reboot.
 
-Seçenek kapatılınca iki dosya da silinir ve uyarı sonraki açılıştan itibaren geri gelir. Hiçbir sistem sürecine hook
-eklenmez. Uygulamayı kaldırmadan önce seçeneği kapatmak gerekir; aksi halde betik `/data/adb` altında kalır.
-
-### Ses işleme
-
-Dosyalar `MediaExtractor` ve `MediaCodec` ile çözülür ve 16 bit PCM WAV olarak yazılır. Normalize ölçütü tüm dosyanın
-ortalama (RMS) seviyesidir (ffmpeg `volumedetect` "mean_volume" ile aynı); hedefe ulaşmak için gereken kazanç tepeleri
-taşırıyorsa yumuşak limiter uygulanır.
-
-## Kaynak kullanımı
-
-- Uygulamada servis, açılış alıcısı ya da arka plan işi yoktur.
-- Zil modu ve ses seviyesi dinleyicileri yalnızca uygulama ekrandayken açıktır.
-- Root sorguları açılışta tek `su` çağrısında toplanır; kütüphane ilk gerektiğinde taranır.
-- Hook'lar olay tabanlıdır; yoklama ya da sürekli çalışan iş parçacığı yoktur. Override dizini bellekte tutulur ve
-  yalnızca dizinin değişim zamanı sorgulanır.
-- Yalnızca ses akışındaki metotlar derlenmiş koddan çıkarılır (deopt).
-- Kulaklık uyarısı betiği yalnızca açılışta bir kez çalışır ve üç özellik ayarlayıp çıkar.
-- Ayrıntılı olay kaydı yalnızca ön sürümlerde bulunur ve varsayılan olarak kapalıdır; kararlı sürümde bu kod hiç
-  çalışmaz.
-
-## Sorun giderme
-
-- **Sesler çalmıyor:** Gelişmiş sekmesindeki "Sistem ses anahtarları" kartında dokunma, kilit ekranı ve şarj sesleri
-  açık olmalı, zil modu normal olmalıdır. Telefon sessiz ya da titreşimdeyken kilit ve dokunma sesleri çalmaz;
-  kilit sesleri için "zorla çal" modu bunu aşar.
-- **Kilit sesi değişmedi:** Kilit sesleri Sistem Arayüzü açılırken yüklendiği için değişiklikten sonra Sistem Arayüzünün
-  yenilenmesi gerekir (uygulama bunu sorar).
-- **Vector kartı kırmızı:** Modül etkin değil ya da kapsam eksik; kapsam ve yeniden başlatma kontrol edilmelidir.
-- **Tanılama:** Ayarlar → Araçlar → Tanı raporu oluştur. Ön sürümlerde "Ayrıntılı olay kaydı" açıkken son SystemUI
-  olayı da rapora yazılır.
-- **Kulaklık uyarısı hâlâ çıkıyor:** Kök yöneticisi `post-fs-data.d` betiklerini çalıştırmıyor olabilir ya da uyarıyı
-  açılışta okuyan özellikler üretici tarafından ezilmiş olabilir; seçeneği açıp cihazı yeniden başlat ve tanı raporuna bak.
-
-## Derleme
-
-Gereksinimler: JDK 17 veya üzeri (CI JDK 21 kullanır). Gradle sarmalayıcı jar dosyası ikili olduğu için depoda yer
-almaz; sürüm `gradle/wrapper/gradle-wrapper.properties` dosyasından okunur.
+When the option is turned off both files are deleted and the warning returns from the next boot. No hook is added to
+any system process. Turn the option off before uninstalling the app; otherwise the script stays under `/data/adb`.
+To remove it by hand:
 
 ```sh
-gradle wrapper --gradle-version <gradle-wrapper.properties içindeki sürüm>   # bir kez
+su -c "rm -rf /data/adb/soundmod /data/adb/post-fs-data.d/soundmod_hp_warning.sh"
+```
+
+Note that listening at high volume for a long time can damage your hearing; this option is deliberate and user-enabled.
+
+### Audio processing
+
+Files are decoded with `MediaExtractor` and `MediaCodec` and written as 16-bit PCM WAV. The normalization metric is
+the mean (RMS) level of the whole file (the same as ffmpeg `volumedetect` "mean_volume"); if the gain needed to reach
+the target pushes peaks over full scale, a soft limiter is applied. Decoding has a 30-second timeout, and the
+decoder is always released even if preparing it fails.
+
+## Resource usage
+
+- The app has no service, boot receiver or background job.
+- The ringer mode and volume listeners are only active while the app is on screen.
+- Root queries are collected into a single `su` call at startup; the library is scanned when first needed. Root
+  commands have a timeout and a capped output size.
+- The hooks are event-based; there is no polling or always-running thread. The override directory is kept in memory
+  and only the directory's modification time is queried.
+- Only the methods in the sound flow are removed from compiled code (deoptimized).
+- The headphone warning script runs once at boot, sets three properties and exits.
+- The verbose event log exists only in pre-releases and is off by default; in stable releases that code never runs.
+
+## Troubleshooting
+
+- **Sounds do not play:** In the "System sound switches" card on the Advanced tab, touch, lock screen and charging
+  sounds must be on and the ringer mode must be normal. Lock and touch sounds do not play while the phone is silent or
+  vibrating; "force play" mode bypasses this for lock sounds.
+- **The lock sound did not change:** Lock sounds are loaded when SystemUI starts, so SystemUI must be refreshed after
+  a change (the app asks).
+- **The Vector card is red:** The module is not enabled or the scope is missing; check the scope and reboot.
+- **Diagnostics:** Settings → Tools → Generate diagnostic report. In pre-releases, while "Verbose event log" is on,
+  the last SystemUI event is also written to the report.
+- **The headphone warning still appears:** The root manager may not run `post-fs-data.d` scripts, or the properties
+  that the warning reads at boot may be overridden by the vendor; turn the option on, reboot, and check the
+  diagnostic report.
+
+## Building
+
+Requirements: JDK 17 or newer (CI uses JDK 21). The Gradle wrapper jar is not in the repository because it is a binary
+file; the version and the SHA-256 checksum are read from `gradle/wrapper/gradle-wrapper.properties`.
+
+```sh
+gradle wrapper --gradle-version <version in gradle-wrapper.properties> \
+  --gradle-distribution-sha256-sum <checksum in gradle-wrapper.properties>   # once
 ./gradlew assembleRelease
 ```
 
-`versionName` `app/build.gradle.kts` içindedir; `versionCode` CI çalışma numarasından gelir. Yerel derlemede imza
-anahtarı verilmezse sürüm APK'sı debug anahtarıyla imzalanır. Ayrıntılı olay kaydı yalnızca CI ön derlemesinde
-(`SOUNDMOD_VERBOSE=true`) APK'ya girer; yerel ve kararlı derlemelerde yoktur.
+`versionName` is in `app/build.gradle.kts`; `versionCode` comes from the CI run number. If no signing key is provided
+in a local build, the release APK is signed with the debug key. The verbose event log is included in the APK only in
+the CI pre-build (`SOUNDMOD_VERBOSE=true`); it is absent from local and stable builds.
 
 ## CI/CD
 
-| Akış | Tetikleyici | Çıktı |
+| Workflow | Trigger | Output |
 |---|---|---|
-| `prebuild.yml` (Ön derleme) | Her push, PR ve elle | İmzalı APK (artifact, ayrıntılı olay kaydı dahil) ve varsayılan dalda `pre-<çalışma no>` etiketli ön sürüm (son 10 saklanır) |
-| `release.yml` (Kararlı sürüm) | Yalnızca elle | `v<versionName>` etiketli kararlı sürüm (ayrıntılı olay kaydı yok); imza anahtarı yoksa başarısız olur, aynı sürüm numarası varsa durur |
-| `build-apk.yml` | Yukarıdakiler çağırır | Ortak derleme ve imzalama adımları |
-| `security.yml` (Güvenlik ve kalite taraması) | Push, PR, haftalık, elle | Android Lint, Semgrep, CodeQL (Java/Kotlin ve GitHub Actions, `security-and-quality`), Gitleaks (git geçmişinde gizli anahtar ve imza anahtarı dosyası), zizmor (workflow güvenliği), PR'larda bağımlılık incelemesi |
-| `dependabot.yml` | Haftalık | Gradle ve GitHub Actions sürüm güncellemeleri (gruplu); libxposed API'sinin büyük sürüm atlaması yok sayılır |
+| `prebuild.yml` (Pre-build) | Every push, PR and manual | A signed APK (artifact, including the verbose event log) and, on the default branch, a pre-release tagged `pre-<run number>` (the last 10 are kept) |
+| `release.yml` (Stable release) | Manual only | A stable release tagged `v<versionName>` (no verbose event log); fails if there is no signing key and stops if that version already exists |
+| `build-apk.yml` | Called by the two above | Shared build and signing steps |
+| `security.yml` (Security and quality scan) | Push, PR, weekly, manual | Android Lint, Semgrep, CodeQL (Java/Kotlin and GitHub Actions, `security-and-quality`), Gitleaks (secrets in the git history and signing key files), zizmor (workflow security), dependency review on PRs |
+| `dependabot.yml` | Weekly | Gradle and GitHub Actions version updates (grouped, with a 7-day cooldown); major bumps of the libxposed API are ignored |
 
-Lint, Semgrep ve zizmor bulguları işi başarısız yapmaz; sonuçlar iş özetinde ve artifact olarak (`lint-raporu`,
-`semgrep-raporu`, `zizmor-raporu`) bulunur. Gitleaks, CodeQL ve bağımlılık incelemesi bulgu varsa işi başarısız yapar.
-Sürüm sayfaları GitHub CLI (`gh release create`) ile oluşturulur, üçüncü taraf yayın eklentisi kullanılmaz.
-`gradle/actions/setup-gradle` tam commit SHA'sına sabitlenmiştir; sürüm yorumunu Dependabot güncel tutar.
+The job fails if Android Lint finds an error, if Semgrep reports an ERROR-severity finding, or if zizmor reports a
+high/critical finding; findings of lower severity are only reported (job summary and the `lint-raporu`,
+`semgrep-raporu` and `zizmor-raporu` artifacts). Gitleaks, CodeQL and the dependency review fail the job on any
+finding. The pre-build does not give signing secrets to PR builds (PR builds are signed with the debug key), and only
+the four signing secrets are passed to the build workflow. Release pages are created with the GitHub CLI
+(`gh release create`); no third-party release action is used. `gradle/actions/setup-gradle` is pinned to a full commit
+SHA, whose version comment Dependabot keeps up to date, and the Gradle distribution is verified against the pinned
+SHA-256.
 
-### İmza anahtarı
+### Signing key
 
-Ön sürümler ve kararlı sürümler aynı anahtarla imzalanır; bu sayede biri diğerinin üzerine kurulabilir. Anahtar depoya
-konmaz, **Settings → Secrets and variables → Actions** altına dört gizli değişken olarak eklenir:
+Pre-releases and stable releases are signed with the same key so one can be installed over the other. The key is not
+put in the repository; it is added as four secrets under **Settings → Secrets and variables → Actions**:
 
-| Gizli değişken | İçerik |
+| Secret | Content |
 |---|---|
-| `SIGNING_KEYSTORE_BASE64` | Keystore dosyasının base64 hâli |
-| `SIGNING_KEYSTORE_PASSWORD` | Keystore parolası |
-| `SIGNING_KEY_ALIAS` | Anahtar takma adı |
-| `SIGNING_KEY_PASSWORD` | Anahtar parolası |
+| `SIGNING_KEYSTORE_BASE64` | The keystore file, base64-encoded |
+| `SIGNING_KEYSTORE_PASSWORD` | The keystore password |
+| `SIGNING_KEY_ALIAS` | The key alias |
+| `SIGNING_KEY_PASSWORD` | The key password |
 
-Anahtar üretme ve base64'e çevirme:
+Generating the key and converting it to base64:
 
 ```sh
 keytool -genkeypair -v -keystore soundmod.jks -alias soundmod \
   -keyalg RSA -keysize 4096 -validity 10000
-base64 -w0 soundmod.jks    # çıktı SIGNING_KEYSTORE_BASE64 olarak kaydedilir
+base64 -w0 soundmod.jks    # save the output as SIGNING_KEYSTORE_BASE64
 ```
 
-Keystore dosyası ve parolalar yedeklenmelidir; kaybedilirse mevcut kurulumların üzerine güncelleme yapılamaz.
-`SIGNING_KEYSTORE_BASE64` tanımlı değilse ön derleme debug anahtarıyla imzalanır (her derlemede farklı imza) ve
-uyarı verir. Derleme sonunda `apksigner` sertifika özeti günlüğe yazılır; iki sürümün aynı anahtarla imzalandığı bu
-özetle doğrulanabilir.
+Back up the keystore file and the passwords; if they are lost, existing installs cannot be updated.
+If `SIGNING_KEYSTORE_BASE64` is not set, the pre-build is signed with the debug key (a different signature on every
+build) and prints a warning. At the end of a build the `apksigner` certificate digest is written to the log; that
+digest can be used to verify two releases were signed with the same key.
 
-### Kararlı sürüm çıkarma
+### Making a stable release
 
-1. `app/build.gradle.kts` içinde `versionName` artırılır ve push edilir.
-2. **Actions → Kararlı sürüm → Run workflow** çalıştırılır (isteğe bağlı sürüm notu girilebilir).
-3. APK, `v<versionName>` etiketiyle **Releases** sayfasında kararlı sürüm olarak yayımlanır.
+1. Bump `versionName` in `app/build.gradle.kts` and push.
+2. Run **Actions → Stable release → Run workflow** (optional release notes can be entered).
+3. The APK is published on the **Releases** page as a stable release tagged `v<versionName>`.
 
-## Proje yapısı
+## Project structure
 
 ```
 app/src/main/
 ├── kotlin/dev/soundmod/nothing/
 │   ├── MainActivity.kt
-│   ├── core/    # katalog, tarayıcı, dönüştürücü, root, depo
-│   ├── hook/    # libxposed giriş sınıfı ve hook'lar
-│   └── ui/      # Compose ekranları, tema, paletler, ViewModel
+│   ├── core/    # catalog, scanner, converter, root, store
+│   ├── hook/    # libxposed entry class and hooks
+│   └── ui/      # Compose screens, theme, palettes, ViewModel
 ├── resources/META-INF/xposed/   # module.prop, scope.list, java_init.list
 └── res/
 ```
 
-## Bilinen sınırlamalar
+## Known limitations
 
-- Kamera, video kaydı, NFC, ters şarj ve arama bildirim sesleri SoundMod'un kapsamındaki süreçlerde çalınmaz. Bu
-  sesler için ilgili uygulamaların Vector kapsamına alınması ve ses dosyalarının uygulama süreçlerine aktarılması
-  (Vector uzak dosya desteği) gerekir; henüz uygulanmamıştır.
-- Eski kamera API'sinin `cameraserver` içinde yerel kodla çaldığı deklanşör sesi hook'lanamaz.
-- Kulaklık uyarısı seçeneği kök yöneticisinin `/data/adb/post-fs-data.d` betiklerini çalıştırmasına bağlıdır.
-- Sistem ses kütüphanesi `/<bölüm>/media/audio` dizinlerini kökteki tüm bölümlerde arar; üreticiye özel ses
-  dizinleri bu kalıbın dışındaysa listelenmez. Tanı raporundaki "ses dizinleri" bölümü cihazda nelerin bulunduğunu gösterir.
-- Hook noktaları AOSP sınıf adlarına dayanır; üreticiye özel arayüzlerde sınıf adları farklıysa ilgili hook çalışmaz ve
-  durum kartında hata olarak görünür.
+- Camera, video recording, NFC, reverse-charging and call notification sounds are not played in processes within
+  SoundMod's scope. Changing them would need the relevant apps to be added to the Vector scope and the sound files to
+  be delivered into those app processes (Vector remote file support); this is not implemented yet.
+- The shutter sound that the old camera API plays in native code inside `cameraserver` cannot be hooked.
+- The headphone warning option depends on the root manager running `/data/adb/post-fs-data.d` scripts.
+- The system sound library searches `/<partition>/media/audio` on every partition at the root; vendor-specific sound
+  directories outside that pattern are not listed. The "sound directories" section of the diagnostic report shows
+  what exists on a device.
+- The hook points rely on AOSP class names; on vendor skins where the class names differ, the related hook does not
+  work and shows up as an error on the status card.
+- The app UI is currently English only.
 
-## Lisans
+## License
 
-SoundMod, [GNU Genel Kamu Lisansı sürüm 3](LICENSE) (GPL-3.0-or-later) ile lisanslanmıştır. Programı, Özgür Yazılım
-Vakfı'nın yayımladığı GPL'in 3. sürümü ya da (isteğinize bağlı olarak) daha yeni bir sürümü koşullarında yeniden
-dağıtabilir ve değiştirebilirsiniz. Program yararlı olması umuduyla dağıtılır, ancak herhangi bir garanti vermez.
+SoundMod is licensed under the [GNU General Public License version 3](LICENSE) (GPL-3.0-or-later). You can
+redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later version. This program is distributed in
+the hope that it will be useful, but WITHOUT ANY WARRANTY.

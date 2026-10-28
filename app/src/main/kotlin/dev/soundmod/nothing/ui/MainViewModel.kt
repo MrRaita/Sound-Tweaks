@@ -47,7 +47,7 @@ enum class SysToggle { TOUCH, LOCK, CHARGING }
 
 data class SlotState(val slot: SoundSlot, val label: String?)
 
-/** Sistem ses ayarlarının canlı durumu (sesleri bastırabilen şeyler) */
+/** Live state of the system sound settings (things that can suppress sounds) */
 data class SysState(
     val touchSounds: Boolean = true,
     val lockSounds: Boolean = true,
@@ -60,7 +60,7 @@ data class SysState(
     val mediaMax: Int = 0
 )
 
-/** Ses başına normalize seçimi: mode 0 = genel ayar, 1 = kapalı, 2 = özel hedef (db) */
+/** Per-sound normalization choice: mode 0 = global setting, 1 = off, 2 = custom target (dB) */
 data class SlotNorm(val mode: Int = 0, val db: Int = -30)
 
 data class UiState(
@@ -86,15 +86,15 @@ data class UiState(
     val restartPrompt: RestartPrompt? = null,
     val skipRestartWarning: Boolean = false,
     val slotNorm: Map<String, SlotNorm> = emptyMap(),
-    /** Alt çubuktaki sekmelerin sırası (0 Sesler, 1 Kütüphane, 2 Gelişmiş, 3 Ayarlar) */
+    /** Order of the tabs in the bottom bar (0 Sounds, 1 Library, 2 Advanced, 3 Settings) */
     val tabOrder: List<Int> = listOf(0, 1, 2, 3),
     val hiddenTabs: Set<Int> = emptySet(),
-    /** Alt çubuk stili: 0 = gömülü (genişleyen hap), 1 = yüzen */
+    /** Bottom bar style: 0 = docked (expanding pill), 1 = floating */
     val navStyle: Int = 0,
     val noHpWarning: Boolean = false
 )
 
-/** Kullanıcıya sorulan Sistem Arayüzü yenileme önerisi */
+/** The SystemUI refresh suggestion shown to the user */
 data class RestartPrompt(val title: String, val text: String)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
@@ -102,7 +102,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val prefs = app.getSharedPreferences("soundmod_ui", Context.MODE_PRIVATE)
 
     init {
-        // Sürüm 0.5: kilit yuvaları yeniden stok mekanizmaya (Settings yolu) döndü; eski kayıtları unut
+        // Version 0.5: the lock slots went back to the stock mechanism (Settings path); forget the old records
         if (prefs.getInt("schema", 0) < 2) {
             SoundCatalog.slots.filter { it.sysUiReload }.forEach { repo.forget(it) }
             prefs.edit().putInt("schema", 2).apply()
@@ -148,7 +148,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         uiHandler.postDelayed(debouncedSysRefresh, 150)
     }
 
-    /** Zil modu / ses seviyesi değişince durum kartı anında güncellensin (yalnızca uygulama görünürken). */
+    /** Update the status card right away when the ringer mode / volume changes (only while the app is visible). */
     private val sysReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
             scheduleSysRefresh()
@@ -160,7 +160,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Uygulama ön plana gelince çağrılır; dinleyiciler yalnızca görünürken açıktır. */
+    /** Called when the app comes to the foreground; listeners are only active while it is visible. */
     fun startSysWatch() {
         if (watching) return
         watching = true
@@ -176,12 +176,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             cr.registerContentObserver(Settings.System.getUriFor("lockscreen_sounds_enabled"), false, sysObserver)
             cr.registerContentObserver(Settings.Global.getUriFor("charging_sounds_enabled"), false, sysObserver)
         } catch (e: Exception) {
-            // dinleyici açılamazsa sekmeye girince yine yenilenir
+            // if the listener cannot be registered, the state is still refreshed when the tab is opened
         }
         refreshSys()
     }
 
-    /** Uygulama arka plana geçince tüm dinleyiciler kapanır: arka planda hiçbir şey çalışmaz. */
+    /** All listeners are closed when the app goes to the background: nothing runs in the background. */
     fun stopSysWatch() {
         if (!watching) return
         watching = false
@@ -209,7 +209,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Bir yuva için geçerli ses işleme seçenekleri: önce ses başına seçim, yoksa genel ayar */
+    /** Effective audio processing options for a slot: the per-sound choice first, otherwise the global setting */
     private fun optsFor(slot: SoundSlot): AudioConverter.Options {
         val st = _state.value
         val n = st.slotNorm[slot.id] ?: SlotNorm(0, st.targetDb)
@@ -236,12 +236,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun readHiddenTabs(): Set<Int> {
         val parsed = prefs.getString("tab_hidden", "")!!.split(",").mapNotNull { it.trim().toIntOrNull() }
-        // Ayarlar (3) hiçbir zaman gizlenemez; en az bir başka sekme görünür kalmalı
+        // Settings (3) can never be hidden; at least one other tab must stay visible
         val hidden = parsed.filter { it in 0..2 }.toSet()
         return if (hidden.size >= 3) hidden - hidden.first() else hidden
     }
 
-    /** Sekmeyi sıradaki yeni konumuna taşır (sürükle-bırak sonrası). */
+    /** Moves a tab to its new position (after drag and drop). */
     fun moveTabTo(id: Int, newIndex: Int) {
         val order = _state.value.tabOrder.toMutableList()
         val i = order.indexOf(id)
@@ -258,10 +258,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun setTabHidden(id: Int, hidden: Boolean) {
-        if (id !in 0..2) return // Ayarlar her zaman görünür
+        if (id !in 0..2) return // Settings is always visible
         val cur = _state.value.hiddenTabs
         val next = if (hidden) cur + id else cur - id
-        if (next.size >= 3) return // en az bir sekme (Ayarlar dışında) görünür kalmalı
+        if (next.size >= 3) return // at least one tab (besides Settings) must stay visible
         prefs.edit().putString("tab_hidden", next.joinToString(",")).apply()
         _state.update { it.copy(hiddenTabs = next) }
     }
@@ -305,8 +305,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 chargingSounds = Settings.Global.getInt(cr, "charging_sounds_enabled", 1) == 1,
                 ringer = when (am.ringerMode) {
                     AudioManager.RINGER_MODE_NORMAL -> "Normal"
-                    AudioManager.RINGER_MODE_VIBRATE -> "Titreşim"
-                    else -> "Sessiz"
+                    AudioManager.RINGER_MODE_VIBRATE -> "Vibrate"
+                    else -> "Silent"
                 },
                 systemMuted = am.isStreamMute(AudioManager.STREAM_SYSTEM),
                 systemVol = am.getStreamVolume(AudioManager.STREAM_SYSTEM),
@@ -319,7 +319,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Kütüphane yalnızca ilk gerektiğinde (sekme/seçici açılınca) taranır. */
+    /** The library is scanned only when first needed (when the tab/picker opens). */
     fun ensureLibrary() {
         if (!libraryLoaded) loadLibrary()
     }
@@ -333,7 +333,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** IO iş parçacığında: kütüphane henüz taranmadıysa şimdi tara. */
+    /** On the IO thread: scan the library now if it has not been scanned yet. */
     private fun libraryNow(): List<SystemSound> {
         val cur = _state.value.library
         if (libraryLoaded && cur.isNotEmpty()) return cur
@@ -389,16 +389,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             SysToggle.CHARGING -> "settings put global charging_sounds_enabled $v"
         }
         val r = Root.run(cmd)
-        if (!r.ok) msg("Ayar değiştirilemedi: ${r.out}")
+        if (!r.ok) msg("Could not change the setting: ${r.out}")
         _state.update { it.copy(sys = readSys()) }
     }
 
-    // ---- Ses değiştirme ----
+    // ---- Changing sounds ----
 
     fun applySystem(slot: SoundSlot, sound: SystemSound) = work {
         repo.applySystem(slot, sound, optsFor(slot)).fold(
             onSuccess = { afterChange(slot, "“${slot.title}” → ${sound.name}", it) },
-            onFailure = { msg("Hata: ${it.message}") }
+            onFailure = { msg("Error: ${it.message}") }
         )
     }
 
@@ -406,34 +406,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val name = displayName(uri)
         repo.applyCustom(slot, uri, name, optsFor(slot)).fold(
             onSuccess = { afterChange(slot, "“${slot.title}” → $name", it) },
-            onFailure = { msg("Hata: ${it.message}") }
+            onFailure = { msg("Error: ${it.message}") }
         )
     }
 
-    /** Seçilen sesi susturur (kısa sessiz dosya). */
+    /** Mutes the selected sound (short silent file). */
     fun applySilent(slot: SoundSlot) = work {
         repo.applySilence(slot).fold(
             onSuccess = { afterChange(slot, "“${slot.title}” susturuldu", it) },
-            onFailure = { msg("Hata: ${it.message}") }
+            onFailure = { msg("Error: ${it.message}") }
         )
     }
 
-    /** Tek bir sesi, kendi normalize seçimiyle yeniden işler. */
+    /** Reprocesses a single sound with its own normalization choice. */
     fun reapplySlot(slot: SoundSlot) = work {
         repo.reprocess(slot, optsFor(slot)).fold(
-            onSuccess = { afterChange(slot, "“${slot.title}” yeniden işlendi", it) },
-            onFailure = { msg("Hata: ${it.message}") }
+            onSuccess = { afterChange(slot, "“${slot.title}” reprocessed", it) },
+            onFailure = { msg("Error: ${it.message}") }
         )
     }
 
     fun reset(slot: SoundSlot) = work {
         repo.reset(slot).fold(
-            onSuccess = { afterChange(slot, "“${slot.title}” varsayılana döndü", null) },
-            onFailure = { msg("Hata: ${it.message}") }
+            onSuccess = { afterChange(slot, "“${slot.title}” reset to default", null) },
+            onFailure = { msg("Error: ${it.message}") }
         )
     }
 
-    /** Seçilmiş tüm sesleri güncel normalize ayarıyla yeniden işler */
+    /** Reprocesses every selected sound with the current normalization settings */
     fun reapplyAll() = work {
         var ok = 0
         var fail = 0
@@ -457,9 +457,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (needSysUi && !_state.value.forceLock) askSysUiReload()
         _state.update { it.copy(slots = readSlots()) }
         val text = if (ok == 0 && fail == 0) {
-            "Yeniden işlenecek seçili ses yok"
+            "No selected sounds to reprocess"
         } else {
-            "$ok ses yeniden işlendi" + (if (fail > 0) ", $fail hata" else "") +
+            "$ok sounds reprocessed" + (if (fail > 0) ", $fail failed" else "") +
                 (if (ok == 1 && lastSummary.isNotBlank()) " · $lastSummary" else "")
         }
         msg(text)
@@ -475,7 +475,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun work(block: () -> Unit) {
         if (_state.value.root != RootState.GRANTED) {
-            msg("Önce root izni gerekli (Ayarlar sekmesi)")
+            msg("Root access is required first (Settings tab)")
             return
         }
         _state.update { it.copy(busy = true) }
@@ -491,24 +491,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun displayName(uri: Uri): String = try {
         app().contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
             if (c.moveToFirst()) c.getString(0) else null
-        } ?: uri.lastPathSegment ?: "ses"
+        } ?: uri.lastPathSegment ?: "sound"
     } catch (e: Exception) {
-        "ses"
+        "sound"
     }
 
-    /** system_server'daki SoundEffectsHelper'ı yeniden yükletir; yeni yollar getResourceFilePath'ten geçer. */
+    /** Makes SoundEffectsHelper in system_server reload; new paths then go through getResourceFilePath. */
     private fun reloadEffects() {
         try {
             val am = app().getSystemService(Context.AUDIO_SERVICE) as AudioManager
-            // SDK saplarında görünürlüğü sürüme göre değiştiği için yansıma ile çağrılır
+            // called through reflection because its visibility in the SDK stubs varies by version
             AudioManager::class.java.getMethod("unloadSoundEffects").invoke(am)
             AudioManager::class.java.getMethod("loadSoundEffects").invoke(am)
         } catch (e: Exception) {
-            msg("Sesler yeniden yüklenemedi, değişiklik için yeniden başlatmak gerekebilir")
+            msg("Could not reload the sounds; a reboot may be needed for the change to apply")
         }
     }
 
-    // ---- Çalma (çal / duraklat / devam) ----
+    // ---- Playback (play / pause / resume) ----
 
     fun playSlot(slot: SoundSlot) {
         val key = "slot:${slot.id}"
@@ -519,7 +519,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val path = repo.previewPath(slot) ?: repo.stockPath(slot, libraryNow())
             if (path == null) {
-                msg("Bu ses için önizleme dosyası bulunamadı")
+                msg("No preview file found for this sound")
                 return@launch
             }
             withContext(Dispatchers.Main) { toggle(key, path) }
@@ -530,7 +530,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.Main) { toggle("lib:$path", path) }
     }
 
-    /** Aynı anahtar çalıyorsa duraklatır, duraklatılmışsa devam ettirir; farklıysa yenisini başlatır. */
+    /** Pauses if the same key is playing, resumes if paused, and starts the new one if it is different. */
     private fun toggle(key: String, path: String) {
         val cur = _player.value
         val p = mp
@@ -568,7 +568,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             np.setOnCompletionListener { finishPlayback(key) }
             np.setOnErrorListener { _, _, _ ->
                 release()
-                msg("Çalınamadı")
+                msg("Could not play")
                 true
             }
             mp = np
@@ -577,7 +577,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             np.prepareAsync()
         } catch (e: Exception) {
             release()
-            msg("Çalınamadı: ${e.message}")
+            msg("Could not play: ${e.message}")
         }
     }
 
@@ -592,8 +592,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     /**
-     * Çalma bitince oynatıcıyı bırakır ama ilerleme çubuğu dolu ve dalgalı hâlde bir süre görünür kalır;
-     * böylece çok kısa seslerde de çubuk ve dalga efekti fark edilir.
+     * Releases the player when playback ends, but the progress bar stays visible, full and wavy, for a while,
+     * so the bar and the wave effect are noticeable even for very short sounds.
      */
     private fun finishPlayback(key: String) {
         val cur = _player.value
@@ -602,8 +602,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (cur.key != key) return
         _player.value = cur.copy(playing = false, anchorPosMs = cur.durationMs)
         hideJob?.cancel()
-        // Uzun seslerde çubuk bitişte hemen kaybolur; çok kısa seslerde efekt görünsün diye çalmanın başından
-        // itibaren toplam en az ~0.5 sn görünür kalır.
+        // For long sounds the bar disappears right at the end; for very short ones it stays visible for at least
+        // ~0.5 s in total from the start of playback so the effect can be seen.
         val hold = maxOf(100L, 500L - (SystemClock.elapsedRealtime() - playStartedAt))
         hideJob = viewModelScope.launch(Dispatchers.Main) {
             delay(hold)
@@ -611,22 +611,22 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
-    /** Sistem ses efektini sistem yoluyla çalar (dokunma sesleri açıksa duyulur). */
+    /** Plays a system sound effect through the system path (audible if touch sounds are on). */
     fun testEffect(fx: Int) {
         try {
             val am = app().getSystemService(Context.AUDIO_SERVICE) as AudioManager
             am.playSoundEffect(fx)
-            if (!_state.value.sys.touchSounds) msg("Dokunma sesleri kapalı, Ayarlar sekmesinden açabilirsin")
+            if (!_state.value.sys.touchSounds) msg("Touch sounds are off; you can turn them on in the Settings tab")
         } catch (e: Exception) {
-            msg("Test başarısız: ${e.message}")
+            msg("Test failed: ${e.message}")
         }
     }
 
-    // ---- Yardımcı modül / Sistem Arayüzü / rapor ----
+    // ---- Helper module / SystemUI / report ----
 
     fun restartSysUiNow() = work {
-        repo.restartSystemUi()
-        msg("Sistem Arayüzü yenilendi")
+        val r = repo.restartSystemUi()
+        msg(if (r.ok) "SystemUI restarted" else "Could not restart SystemUI: ${r.out.ifBlank { "code ${r.code}" }}")
     }
 
     fun buildReport() = work {
@@ -634,83 +634,83 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             "wireless_charging_started_sound desk_dock_sound car_dock_sound"
         val cmd = """
             echo "== build =="; getprop ro.build.display.id
-            echo "== depo =="; ls -laZ ${SoundPaths.BASE} ${SoundPaths.OVERRIDE_DIR} ${SoundPaths.FILES_DIR} 2>&1
-            echo "== ayarlar =="
+            echo "== store =="; ls -laZ ${SoundPaths.BASE} ${SoundPaths.OVERRIDE_DIR} ${SoundPaths.FILES_DIR} 2>&1
+            echo "== settings =="
             for k in $keys; do echo "${'$'}k=${'$'}(settings get global ${'$'}k)"; done
             echo "lockscreen_sounds_enabled=${'$'}(settings get system lockscreen_sounds_enabled)"
             echo "sound_effects_enabled=${'$'}(settings get system sound_effects_enabled)"
             echo "charging_sounds_enabled=${'$'}(settings get global charging_sounds_enabled)"
-            echo "== varsayilan dosyalar =="
+            echo "== default files =="
             for k in $keys; do v=${'$'}(settings get global ${'$'}k); echo "${'$'}k -> ${'$'}(ls -lZ ${'$'}v 2>&1)"; done
-            echo "lock/unlock/trusted stok dosyalar:"; ls -lZ /*/media/audio/ui/ 2>/dev/null | grep -i -E "lock|trusted"
-            echo "== ses dizinleri =="
-            for d in /*/media/audio; do [ -d "${'$'}d" ] && echo "${'$'}d: ${'$'}(find "${'$'}d" -type f 2>/dev/null | wc -l) dosya, alt dizinler: ${'$'}(ls "${'$'}d" 2>/dev/null | tr '\n' ' ')"; done
-            echo "== kutuphanede listelenmeyen ses dizini dosyalari =="
+            echo "stock lock/unlock/trusted files:"; ls -lZ /*/media/audio/ui/ 2>/dev/null | grep -i -E "lock|trusted"
+            echo "== sound directories =="
+            for d in /*/media/audio; do [ -d "${'$'}d" ] && echo "${'$'}d: ${'$'}(find "${'$'}d" -type f 2>/dev/null | wc -l) files, subdirectories: ${'$'}(ls "${'$'}d" 2>/dev/null | tr '\n' ' ')"; done
+            echo "== files in sound directories that the library does not list =="
             for d in /*/media/audio; do
               [ -d "${'$'}d" ] || continue
               find "${'$'}d" -type f 2>/dev/null | grep -v -i -E '\.(ogg|wav|mp3|m4a|flac|opus|aac)${'$'}' | while read -r f; do ls -lZ "${'$'}f"; done
-              find "${'$'}d" -mindepth 4 -type f 2>/dev/null | while read -r f; do echo "derin: ${'$'}f"; done
+              find "${'$'}d" -mindepth 4 -type f 2>/dev/null | while read -r f; do echo "deep: ${'$'}f"; done
               find "${'$'}d" -type d 2>/dev/null | while read -r x; do ls -ldZ "${'$'}x"; done
             done
-            echo "== hook durumu =="; cat ${SoundPaths.STATUS_SYSTEM} 2>&1; echo
+            echo "== hook status =="; cat ${SoundPaths.STATUS_SYSTEM} 2>&1; echo
             settings get global ${SoundPaths.SYSUI_STATUS_KEY}
-            echo "kilit sesi zorla cal: ${'$'}([ -e ${SoundPaths.FORCE_FLAG} ] && echo ACIK || echo kapali)"
-            echo "ayrintili olay kaydi: ${'$'}([ -e ${SoundPaths.DEBUG_FLAG} ] && echo ACIK || echo kapali)"
-            echo "son SystemUI olayi:"; settings get global ${SoundPaths.SYSUI_LAST_KEY}
-            echo "== sistem arayuzu =="; pidof com.android.systemui
-            echo "== selinux (son reddedilenler) =="
+            echo "force-play lock sounds: ${'$'}([ -e ${SoundPaths.FORCE_FLAG} ] && echo ON || echo off)"
+            echo "verbose event log: ${'$'}([ -e ${SoundPaths.DEBUG_FLAG} ] && echo ON || echo off)"
+            echo "last SystemUI event:"; settings get global ${SoundPaths.SYSUI_LAST_KEY}
+            echo "== SystemUI =="; pidof com.android.systemui
+            echo "== SELinux (latest denials) =="
             logcat -d -b all 2>/dev/null | grep -i "avc:.*denied" | grep -i -E "scontext=u:r:(systemui_app|system_server|system_app|platform_app)" | tail -15
-            echo "== bitti =="
+            echo "== done =="
         """.trimIndent()
         val r = Root.run(cmd)
-        _state.update { it.copy(report = r.out.ifBlank { "Rapor boş (kod ${r.code})" }) }
+        _state.update { it.copy(report = r.out.ifBlank { "Report is empty (code ${r.code})" }) }
     }
 
     private fun askSysUiReload() {
         _state.update {
             it.copy(
                 restartPrompt = RestartPrompt(
-                    "Sistem Arayüzü yenilensin mi?",
-                    "Kilitleme, kilit açma ve güvenilir cihaz sesleri Sistem Arayüzü açılırken bir kez yüklenir. " +
-                        "Yeni sesin hemen geçerli olması için Sistem Arayüzü yeniden başlatılabilir. Ekran birkaç saniye " +
-                        "yeniden çizilir, açık uygulamalar kapanmaz. İstersen sonra da yenileyebilirsin " +
-                        "(Ayarlar → Gelişmiş)."
+                    "Refresh SystemUI?",
+                    "The lock, unlock and trusted-device sounds are loaded once when SystemUI starts. " +
+                        "SystemUI can be restarted so the new sound takes effect right away. The screen redraws " +
+                        "for a few seconds; open apps are not closed. You can also refresh it later " +
+                        "(Settings → Advanced)."
                 )
             )
         }
     }
 
-    /** Kilit sesleri "zorla çal" modu: medya ses seviyesiyle çal, sessiz/titreşim kısıtlamalarını aş. */
+    /** Lock sounds "force play" mode: play at the media volume, bypassing silent/vibrate restrictions. */
     fun setForceLock(on: Boolean) = work {
         val r = repo.setForceLock(on)
         if (!r.ok) {
-            msg("Ayar değiştirilemedi: ${r.out}")
+            msg("Could not change the setting: ${r.out}")
         } else {
             _state.update { it.copy(forceLock = on) }
             if (on) {
                 _state.update {
                     it.copy(
                         restartPrompt = RestartPrompt(
-                            "Zorla çalma için yenile",
-                            "Zorla çalma, Sistem Arayüzü açılırken kurulur. Etkinleşmesi için Sistem Arayüzü şimdi " +
-                                "yeniden başlatılsın mı? Ekran birkaç saniye yeniden çizilir, açık uygulamalar kapanmaz."
+                            "Refresh for force play",
+                            "Force play is set up when SystemUI starts. Restart SystemUI now so it takes effect? " +
+                                "The screen redraws for a few seconds; open apps are not closed."
                         )
                     )
                 }
             } else {
-                msg("Zorla çalma kapatıldı, stok kilit sesi mekanizması kullanılacak")
+                msg("Force play turned off; the stock lock sound mechanism will be used")
             }
         }
     }
 
-    /** Kulaklık ses uyarısını kapat/aç (açılış betiği; kapatma sonraki açılışta etkili olur). */
+    /** Turn the headphone volume warning off/on (boot script; turning it off takes effect on the next boot). */
     fun setNoHpWarning(on: Boolean) = work {
         val r = repo.setNoHpWarning(on)
         if (r.ok) {
             _state.update { it.copy(noHpWarning = on) }
-            msg(if (on) "Kulaklık ses uyarısı kapatıldı" else "Betik silindi, uyarı bir sonraki açılışta geri gelir")
+            msg(if (on) "Headphone volume warning turned off" else "Script removed; the warning returns on the next boot")
         } else {
-            msg("Ayar değiştirilemedi: ${r.out}")
+            msg("Could not change the setting: ${r.out}")
         }
     }
 
@@ -734,7 +734,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setDebugLog(on: Boolean) = work {
         val r = repo.setDebug(on)
-        if (r.ok) _state.update { it.copy(debugLog = on) } else msg("Ayar değiştirilemedi: ${r.out}")
+        if (r.ok) _state.update { it.copy(debugLog = on) } else msg("Could not change the setting: ${r.out}")
     }
 
     fun clearReport() {

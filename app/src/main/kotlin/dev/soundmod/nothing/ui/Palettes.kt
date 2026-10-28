@@ -5,36 +5,36 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
 
-/** Hazır renk paleti: bir ana ton (hue) ve doygunluk çarpanından şema üretilir. */
+/** Ready-made color palette: the scheme is generated from a main hue and a saturation multiplier. */
 data class Palette(
     val name: String,
     val hue: Float,
-    /** 0 = tamamen nötr, 1 = tam renkli */
+    /** 0 = fully neutral, 1 = fully colored */
     val sat: Float = 1f,
-    /** Verilirse üçüncül (vurgu) renk bu tonda ve canlı olur */
+    /** If given, the tertiary (accent) color uses this hue and is vivid */
     val tertiaryHue: Float? = null
 )
 
 object Palettes {
     val list = listOf(
-        Palette("Okyanus", 212f),
-        Palette("Turkuaz", 178f),
-        Palette("Orman", 140f),
-        Palette("Zeytin", 78f),
-        Palette("Kehribar", 38f),
-        Palette("Mercan", 10f),
-        Palette("Gül", 338f),
-        Palette("Erik", 305f),
-        Palette("Lavanta", 265f),
-        Palette("Gece", 235f, 0.7f),
+        Palette("Ocean", 212f),
+        Palette("Turquoise", 178f),
+        Palette("Forest", 140f),
+        Palette("Olive", 78f),
+        Palette("Amber", 38f),
+        Palette("Coral", 10f),
+        Palette("Rose", 338f),
+        Palette("Plum", 305f),
+        Palette("Lavender", 265f),
+        Palette("Night", 235f, 0.7f),
         Palette("Nothing", 0f, 0f, 4f),
-        Palette("Grafit", 210f, 0.2f)
+        Palette("Graphite", 210f, 0.2f)
     )
 
     private fun c(h: Float, s: Float, l: Float): Color =
         Color.hsl(((h % 360f) + 360f) % 360f, s.coerceIn(0f, 1f), l.coerceIn(0f, 1f))
 
-    /** Seçim kutusunda gösterilen örnek renk */
+    /** Sample color shown in the picker */
     fun swatch(p: Palette): Color =
         if (p.tertiaryHue != null) c(p.tertiaryHue, 0.85f, 0.50f) else c(p.hue, 0.30f + 0.35f * p.sat, 0.45f)
 
@@ -46,7 +46,7 @@ object Palettes {
         val sP = 0.62f * k
         val sS = 0.30f * k
         val sT = if (p.tertiaryHue != null) 0.80f else 0.40f * k
-        val n = 0.04f + 0.06f * k // nötr yüzeylerin hafif tonu
+        val n = 0.04f + 0.06f * k // slight tint of the neutral surfaces
         return if (!dark) lightColorScheme(
             primary = c(h, sP, 0.38f), onPrimary = Color.White,
             primaryContainer = c(h, 0.75f * k, 0.88f), onPrimaryContainer = c(h, 0.70f * k + 0.1f, 0.14f),

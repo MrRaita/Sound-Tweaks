@@ -18,11 +18,11 @@ import kotlin.math.sqrt
 import kotlin.math.tanh
 
 /**
- * Herhangi bir ses dosyasını çözüp (gerekirse kırpıp/normalize edip) PCM16 WAV yazar.
+ * Decodes any audio file (trimming and normalizing if requested) and writes a PCM16 WAV.
  *
- * Normalizasyon ölçütü, ffmpeg `volumedetect`'in "mean_volume" değeriyle aynıdır
- * (tüm dosyanın RMS'i, dBFS). Hedefe ulaşmak için gereken kazanç tepeleri taşırıyorsa
- * sert kırpma yerine yumuşak limiter uygulanır.
+ * The normalization metric is the same as ffmpeg `volumedetect`'s "mean_volume"
+ * (RMS of the whole file, in dBFS). If the gain needed to reach the target pushes peaks over full scale,
+ * a soft limiter is applied instead of hard clipping.
  */
 object AudioConverter {
     data class Options(val normalize: Boolean, val targetDb: Int, val maxSeconds: Int = 6)
@@ -35,9 +35,9 @@ object AudioConverter {
         val limited: Boolean
     ) {
         fun summary(normalized: Boolean): String {
-            if (!normalized) return "Seviye ${fmt(beforeDb)} dBFS (normalize kapalı)"
-            val change = if (abs(gainDb) < 0.15) "değişmedi" else "${fmt(beforeDb)} → ${fmt(afterDb)} dBFS"
-            return "Seviye $change, tepe ${fmt(peakDb)} dB" + if (limited) ", tepeler yumuşatıldı" else ""
+            if (!normalized) return "Level ${fmt(beforeDb)} dBFS (normalization off)"
+            val change = if (abs(gainDb) < 0.15) "unchanged" else "${fmt(beforeDb)} → ${fmt(afterDb)} dBFS"
+            return "Level $change, peak ${fmt(peakDb)} dB" + if (limited) ", peaks softened" else ""
         }
 
         private fun fmt(v: Double) = String.format(java.util.Locale.US, "%.1f", v)
@@ -46,80 +46,91 @@ object AudioConverter {
     private const val LIMIT_START = 0.72
     private const val LIMIT_CEIL = 0.97
 
+    private const val DECODE_TIMEOUT_MS = 30_000L
+
     fun toWav(ctx: Context, uri: Uri, out: File, opt: Options): Stats {
         val ex = MediaExtractor()
-        ex.setDataSource(ctx, uri, null)
-        var track = -1
-        var fmt: MediaFormat? = null
-        for (i in 0 until ex.trackCount) {
-            val f = ex.getTrackFormat(i)
-            if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
-                track = i
-                fmt = f
-                break
-            }
-        }
-        val format = fmt ?: run {
-            ex.release()
-            throw IllegalArgumentException("Dosyada ses kanalı bulunamadı")
-        }
-        ex.selectTrack(track)
-
-        var sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
-        var channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
-        val codec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
-        codec.configure(format, null, null, 0)
-        codec.start()
-
-        val info = MediaCodec.BufferInfo()
+        var codec: MediaCodec? = null
         val pcm = ByteArrayOutputStream()
-        var inputDone = false
-        var outputDone = false
-        var maxBytes = sampleRate.toLong() * channels * 2L * opt.maxSeconds
+        var sampleRate = 0
+        var channels = 0
+        var maxBytes = 0L
         try {
+            ex.setDataSource(ctx, uri, null)
+            var track = -1
+            var fmt: MediaFormat? = null
+            for (i in 0 until ex.trackCount) {
+                val f = ex.getTrackFormat(i)
+                if (f.getString(MediaFormat.KEY_MIME)?.startsWith("audio/") == true) {
+                    track = i
+                    fmt = f
+                    break
+                }
+            }
+            val format = fmt ?: throw IllegalArgumentException("No audio track found in the file")
+            ex.selectTrack(track)
+
+            sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
+            channels = format.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
+            maxBytes = sampleRate.toLong() * channels * 2L * opt.maxSeconds
+            val dec = MediaCodec.createDecoderByType(format.getString(MediaFormat.KEY_MIME)!!)
+            codec = dec
+            dec.configure(format, null, null, 0)
+            dec.start()
+
+            val info = MediaCodec.BufferInfo()
+            var inputDone = false
+            var outputDone = false
+            val deadline = android.os.SystemClock.elapsedRealtime() + DECODE_TIMEOUT_MS
             while (!outputDone) {
+                // A broken file or decoder that never reports end-of-stream must not hang the app
+                if (android.os.SystemClock.elapsedRealtime() > deadline) {
+                    throw IllegalStateException("Decoding timed out")
+                }
                 if (!inputDone) {
-                    val idx = codec.dequeueInputBuffer(10_000)
+                    val idx = dec.dequeueInputBuffer(10_000)
                     if (idx >= 0) {
-                        val buf = codec.getInputBuffer(idx)!!
+                        val buf = dec.getInputBuffer(idx)!!
                         val n = ex.readSampleData(buf, 0)
                         if (n < 0) {
-                            codec.queueInputBuffer(idx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
+                            dec.queueInputBuffer(idx, 0, 0, 0, MediaCodec.BUFFER_FLAG_END_OF_STREAM)
                             inputDone = true
                         } else {
-                            codec.queueInputBuffer(idx, 0, n, ex.sampleTime, 0)
+                            dec.queueInputBuffer(idx, 0, n, ex.sampleTime, 0)
                             ex.advance()
                         }
                     }
                 }
-                val oi = codec.dequeueOutputBuffer(info, 10_000)
+                val oi = dec.dequeueOutputBuffer(info, 10_000)
                 if (oi >= 0) {
-                    val ob = codec.getOutputBuffer(oi)!!
+                    val ob = dec.getOutputBuffer(oi)!!
                     val chunk = ByteArray(info.size)
                     ob.position(info.offset)
                     ob.get(chunk)
                     pcm.write(chunk)
-                    codec.releaseOutputBuffer(oi, false)
+                    dec.releaseOutputBuffer(oi, false)
                     if (info.flags and MediaCodec.BUFFER_FLAG_END_OF_STREAM != 0) outputDone = true
                     if (pcm.size() >= maxBytes) outputDone = true
                 } else if (oi == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
-                    val nf = codec.outputFormat
+                    val nf = dec.outputFormat
                     sampleRate = nf.getInteger(MediaFormat.KEY_SAMPLE_RATE)
                     channels = nf.getInteger(MediaFormat.KEY_CHANNEL_COUNT)
                     maxBytes = sampleRate.toLong() * channels * 2L * opt.maxSeconds
                 }
             }
         } finally {
-            runCatching { codec.stop() }
-            codec.release()
-            ex.release()
+            codec?.let {
+                runCatching { it.stop() }
+                runCatching { it.release() }
+            }
+            runCatching { ex.release() }
         }
 
         val raw = pcm.toByteArray()
         val usable = minOf(raw.size.toLong(), maxBytes).toInt() and 1.inv()
         val samples = ShortArray(usable / 2)
         ByteBuffer.wrap(raw, 0, usable).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(samples)
-        require(samples.isNotEmpty()) { "Ses verisi boş" }
+        require(samples.isNotEmpty()) { "Decoded audio is empty" }
 
         val before = meanDb(samples)
         var gainDb = 0.0
@@ -143,7 +154,7 @@ object AudioConverter {
         return stats
     }
 
-    /** Belirli bir sesi susturmak için kısa bir sessiz WAV üretir. */
+    /** Writes a short silent WAV, used to mute a sound. */
     fun writeSilence(out: File, ms: Int = 80) {
         writeWav(out, ShortArray(44100 * ms / 1000), 44100, 1)
     }

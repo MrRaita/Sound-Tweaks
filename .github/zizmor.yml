@@ -1,6 +1,6 @@
-# zizmor (workflow güvenlik denetçisi) ayarı.
-# GitHub'ın kendi eylemleri (actions/*, github/*) sürüm etiketiyle kullanılabilir; diğer tüm üçüncü taraf eylemler
-# tam commit SHA'sına sabitlenmelidir.
+# zizmor (workflow security linter) configuration.
+# GitHub's own actions (actions/*, github/*) may be used by version tag; every other third-party action
+# must be pinned to a full commit SHA.
 rules:
   unpinned-uses:
     config:

@@ -1,15 +1,15 @@
-name: APK derle (yeniden kullanılabilir)
+name: Build APK (reusable)
 
-# Ön derleme ve kararlı sürüm akışları bunu çağırır; ikisi de aynı adımlarla ve aynı anahtarla imzalar.
+# The pre-build and stable release workflows call this; both build and sign with the same steps and the same key.
 on:
   workflow_call:
     inputs:
       require_signing:
-        description: İmza anahtarı yoksa derlemeyi başarısız say
+        description: Fail the build if there is no signing key
         type: boolean
         default: false
       verbose_log:
-        description: Ayrıntılı olay kaydı özelliğini derlemeye kat (yalnızca ön derleme)
+        description: Include the verbose event log feature in the build (pre-build only)
         type: boolean
         default: false
     secrets:
@@ -23,10 +23,10 @@ on:
         required: false
     outputs:
       version:
-        description: app/build.gradle.kts içindeki versionName
+        description: versionName from app/build.gradle.kts
         value: ${{ jobs.build.outputs.version }}
       signed:
-        description: Yayın anahtarıyla imzalandı mı
+        description: Whether it was signed with the release key
         value: ${{ jobs.build.outputs.signed }}
 
 permissions:
@@ -48,28 +48,36 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Gradle sürümünü oku
+      - name: Read the Gradle version
         id: gv
         run: |
           V=$(sed -n 's#.*gradle-\([0-9][0-9.]*\)-\(bin\|all\)\.zip.*#\1#p' gradle/wrapper/gradle-wrapper.properties | head -1)
-          test -n "$V" || { echo "::error::gradle-wrapper.properties içinde Gradle sürümü bulunamadı"; exit 1; }
+          test -n "$V" || { echo "::error::Could not find the Gradle version in gradle-wrapper.properties"; exit 1; }
           echo "version=$V" >> "$GITHUB_OUTPUT"
+          S=$(sed -n 's/^distributionSha256Sum=//p' gradle/wrapper/gradle-wrapper.properties | head -1)
+          echo "sha=$S" >> "$GITHUB_OUTPUT"
 
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         with:
           gradle-version: ${{ steps.gv.outputs.version }}
 
-      # Depoda gradle-wrapper.jar yoksa (ikili dosya) resmi sarmalayıcıyı üret
-      - name: Gradle sarmalayıcıyı hazırla
+      # If the repository has no gradle-wrapper.jar (binary file), generate the official wrapper
+      - name: Prepare the Gradle wrapper
         env:
           GV: ${{ steps.gv.outputs.version }}
+          GSHA: ${{ steps.gv.outputs.sha }}
         run: |
           if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            gradle wrapper --gradle-version "$GV"
+            # Verify the distribution against the checksum pinned in gradle-wrapper.properties
+            if [ -n "$GSHA" ]; then
+              gradle wrapper --gradle-version "$GV" --gradle-distribution-sha256-sum "$GSHA"
+            else
+              gradle wrapper --gradle-version "$GV"
+            fi
           fi
           chmod +x gradlew
 
-      - name: İmza anahtarını hazırla
+      - name: Prepare the signing key
         id: keys
         env:
           KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
@@ -82,19 +90,19 @@ jobs:
           else
             echo "signed=false" >> "$GITHUB_OUTPUT"
             if [ "$REQUIRE_SIGNING" = "true" ]; then
-              echo "::error::SIGNING_KEYSTORE_BASE64 tanımlı değil; kararlı sürüm yayın anahtarı olmadan derlenmez."
+              echo "::error::SIGNING_KEYSTORE_BASE64 is not set; a stable release is not built without the release key."
               exit 1
             fi
-            echo "::warning::SIGNING_KEYSTORE_BASE64 tanımlı değil; APK debug anahtarıyla imzalanacak (her derlemede farklı imza)."
+            echo "::warning::SIGNING_KEYSTORE_BASE64 is not set; the APK will be signed with the debug key (a different signature on every build)."
           fi
 
-      - name: Sürüm bilgisini oku
+      - name: Read the version
         id: meta
         run: |
           VERSION=$(sed -n 's/.*versionName = "\(.*\)".*/\1/p' app/build.gradle.kts | head -1)
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-      - name: APK derle
+      - name: Build the APK
         env:
           SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
@@ -102,7 +110,7 @@ jobs:
           SOUNDMOD_VERBOSE: ${{ inputs.verbose_log }}
         run: ./gradlew assembleRelease --stacktrace
 
-      - name: APK'yı adlandır ve imzayı göster
+      - name: Name the APK and show its signature
         env:
           VERSION: ${{ steps.meta.outputs.version }}
         run: |
@@ -111,7 +119,7 @@ jobs:
           APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
           "$APKSIGNER" verify --print-certs "SoundMod-${VERSION}.apk" | grep -i "SHA-256" || true
 
-      - name: APK'yı yükle
+      - name: Upload the APK
         uses: actions/upload-artifact@v7
         with:
           name: SoundMod-apk

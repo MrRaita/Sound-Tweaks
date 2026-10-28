@@ -1,12 +1,12 @@
 version: 2
 updates:
-  # Gradle bağımlılıkları (app/build.gradle.kts ve eklenti sürümleri)
+  # Gradle dependencies (app/build.gradle.kts and plugin versions)
   - package-ecosystem: "gradle"
     directory: "/"
     schedule:
       interval: "weekly"
       day: "monday"
-    # Yeni yayımlanan sürümler hemen alınmaz (kötü amaçlı/kararsız sürüm riski); güvenlik güncellemeleri etkilenmez
+    # Newly published versions are not picked up immediately (malicious/unstable release risk); security updates are not affected
     cooldown:
       default-days: 7
     open-pull-requests-limit: 5
@@ -19,11 +19,11 @@ updates:
           - "org.jetbrains.kotlin*"
           - "org.jetbrains.kotlinx*"
     ignore:
-      # Modül API 101'de kalır (daha eski Vector/LSPosed sürümleriyle uyumlu); 102 gerekirse elle opsiyonel eklenir
+      # The module API stays at 101 (compatible with older Vector/LSPosed versions); 102 can be added by hand as an option if needed
       - dependency-name: "io.github.libxposed:api"
         update-types: ["version-update:semver-major"]
 
-  # GitHub Actions sürümleri
+  # GitHub Actions versions
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

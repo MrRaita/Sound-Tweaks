@@ -40,8 +40,8 @@ import androidx.compose.ui.unit.dp
 import kotlin.math.roundToInt
 
 /**
- * Geniş yüzen alt çubuk: seçili sekme simge + yazıyla bir hap içinde gösterilir, diğerleri yalnızca simgedir.
- * Sekme değişince seçili hap genişleyip eskisi daralır; vurgu bir yerden diğerine akıyormuş gibi görünür.
+ * Wide floating bottom bar: the selected tab is shown with icon + label inside a pill, the others are icons only.
+ * When the tab changes the selected pill widens and the old one narrows, so the highlight seems to flow from one place to the other.
  */
 @Composable
 fun ExpandingNavBar(
@@ -116,8 +116,8 @@ fun ExpandingNavBar(
 }
 
 /**
- * Yüzen alt çubuk: içeriğin üstünde gölgeli, dar bir hap. Yalnızca simgeler vardır; seçili sekmenin
- * yuvarlatılmış kare vurgusu sekmeler arasında kayarak yer değiştirir.
+ * Floating bottom bar: a narrow pill with a shadow above the content. It has icons only; the selected tab's
+ * rounded-square highlight slides between the tabs.
  */
 @Composable
 fun FloatingNavBar(

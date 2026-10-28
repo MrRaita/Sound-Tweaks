@@ -1,8 +1,8 @@
-name: Güvenlik ve kalite taraması
+name: Security and quality scan
 
-# Ücretsiz otomatik denetimler. Sonuçlar Actions çıktılarında, özetlerde ve (CodeQL için) GitHub'da
-# Security > Code scanning sekmesinde görünür. CodeQL ve bağımlılık incelemesi herkese açık (public) depolarda
-# ücretsizdir; özel depoda GitHub Advanced Security gerekir, o zaman bu iki iş otomatik atlanır.
+# Free automated checks. Results appear in the Actions output, in job summaries and (for CodeQL) in GitHub's
+# Security > Code scanning tab. CodeQL and dependency review are free for public repositories;
+# a private repository needs GitHub Advanced Security, in which case these two jobs are skipped automatically.
 on:
   workflow_dispatch:
   pull_request:
@@ -34,21 +34,23 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Gradle sürümünü oku
+      - name: Read the Gradle version
         id: gv
         run: |
           V=$(sed -n 's#.*gradle-\([0-9][0-9.]*\)-\(bin\|all\)\.zip.*#\1#p' gradle/wrapper/gradle-wrapper.properties | head -1)
-          test -n "$V" || { echo "::error::gradle-wrapper.properties içinde Gradle sürümü bulunamadı"; exit 1; }
+          test -n "$V" || { echo "::error::Could not find the Gradle version in gradle-wrapper.properties"; exit 1; }
           echo "version=$V" >> "$GITHUB_OUTPUT"
+          S=$(sed -n 's/^distributionSha256Sum=//p' gradle/wrapper/gradle-wrapper.properties | head -1)
+          echo "sha=$S" >> "$GITHUB_OUTPUT"
 
       - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
         with:
           gradle-version: ${{ steps.gv.outputs.version }}
 
-      - name: Lint çalıştır
+      - name: Run lint
         run: gradle --no-daemon lintDebug
 
-      - name: Lint özeti
+      - name: Lint summary
         if: always()
         run: |
           f=app/build/reports/lint-results-debug.xml
@@ -57,8 +59,8 @@ jobs:
           import collections, re, sys
           t = open(sys.argv[1], encoding="utf-8", errors="replace").read()
           c = collections.Counter(re.findall(r'<issue\s[^>]*?severity="(\w+)"', t))
-          print("### Android Lint özeti\n")
-          print("| Önem | Adet |\n|---|---|")
+          print("### Android Lint summary\n")
+          print("| Severity | Count |\n|---|---|")
           for k in ("Fatal", "Error", "Warning", "Informational"):
               print(f"| {k} | {c.get(k, 0)} |")
           PY
@@ -72,7 +74,7 @@ jobs:
           if-no-files-found: ignore
 
   semgrep:
-    name: Semgrep (kural tabanlı güvenlik taraması)
+    name: Semgrep (rule-based security scan)
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
@@ -80,9 +82,9 @@ jobs:
         with:
           persist-credentials: false
 
-      # Bulgular işi başarısız yapmaz (rapor amaçlıdır); yalnızca aracın kendisi çökerse iş kırmızı olur.
-      # Dışarıda bırakılanlar: etiketle sabitlenmiş eylemler (zizmor ilkesi GitHub'ın kendi eylemlerine izin verir) ve
-      # başlatıcı etkinliğin dışa açık olması (uygulamanın tek ekranı, zorunlu).
+      # Findings do not fail the job (informational); the job only turns red if the tool itself crashes.
+      # Excluded: actions pinned by tag (the zizmor policy allows tags for GitHub's own actions) and
+      # the launcher activity being exported (it is the app's only screen, so it must be).
       - name: Semgrep tara
         run: |
           pipx install semgrep
@@ -92,7 +94,16 @@ jobs:
             --exclude-rule java.android.security.exported_activity.exported_activity \
             --metrics=off --sarif --output semgrep.sarif
 
-      - name: Semgrep özeti
+      # Gate: only ERROR-severity findings fail the job (the report above stays informational)
+      - name: Semgrep (fail on ERROR severity)
+        run: |
+          semgrep scan \
+            --config p/default --config p/kotlin --config p/secrets --config p/github-actions \
+            --exclude-rule yaml.github-actions.security.github-actions-mutable-action-tag.github-actions-mutable-action-tag \
+            --exclude-rule java.android.security.exported_activity.exported_activity \
+            --metrics=off --severity ERROR --error --quiet
+
+      - name: Semgrep summary
         if: always()
         run: |
           if [ -f semgrep.sarif ]; then
@@ -100,8 +111,8 @@ jobs:
           import json
           d = json.load(open("semgrep.sarif"))
           res = [r for run in d.get("runs", []) for r in run.get("results", [])]
-          print("### Semgrep özeti\n")
-          print(f"Toplam bulgu: **{len(res)}**\n")
+          print("### Semgrep summary\n")
+          print(f"Total findings: **{len(res)}**\n")
           for r in res[:30]:
               loc = r["locations"][0]["physicalLocation"]
               print(f"- `{r['ruleId']}` — {loc['artifactLocation']['uri']}:{loc['region']['startLine']}")
@@ -117,7 +128,7 @@ jobs:
 
   codeql:
     name: CodeQL (${{ matrix.language }})
-    # Özel depoda GitHub Advanced Security olmadan çalışmaz; her seferinde kırmızı hata vermesin diye atlanır.
+    # Does not work in a private repository without GitHub Advanced Security; skipped so it does not fail every time.
     if: ${{ github.event.repository.private == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
@@ -146,13 +157,15 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Gradle sürümünü oku
+      - name: Read the Gradle version
         if: matrix.language == 'java-kotlin'
         id: gv
         run: |
           V=$(sed -n 's#.*gradle-\([0-9][0-9.]*\)-\(bin\|all\)\.zip.*#\1#p' gradle/wrapper/gradle-wrapper.properties | head -1)
-          test -n "$V" || { echo "::error::gradle-wrapper.properties içinde Gradle sürümü bulunamadı"; exit 1; }
+          test -n "$V" || { echo "::error::Could not find the Gradle version in gradle-wrapper.properties"; exit 1; }
           echo "version=$V" >> "$GITHUB_OUTPUT"
+          S=$(sed -n 's/^distributionSha256Sum=//p' gradle/wrapper/gradle-wrapper.properties | head -1)
+          echo "sha=$S" >> "$GITHUB_OUTPUT"
 
       - name: Gradle kur
         if: matrix.language == 'java-kotlin'
@@ -160,24 +173,30 @@ jobs:
         with:
           gradle-version: ${{ steps.gv.outputs.version }}
 
-      - name: Gradle sarmalayıcıyı hazırla
+      - name: Prepare the Gradle wrapper
         if: matrix.language == 'java-kotlin'
         env:
           GV: ${{ steps.gv.outputs.version }}
+          GSHA: ${{ steps.gv.outputs.sha }}
         run: |
           if [ ! -f gradle/wrapper/gradle-wrapper.jar ]; then
-            gradle wrapper --gradle-version "$GV"
+            # Verify the distribution against the checksum pinned in gradle-wrapper.properties
+            if [ -n "$GSHA" ]; then
+              gradle wrapper --gradle-version "$GV" --gradle-distribution-sha256-sum "$GSHA"
+            else
+              gradle wrapper --gradle-version "$GV"
+            fi
           fi
           chmod +x gradlew
 
-      - name: CodeQL başlat
+      - name: Initialize CodeQL
         uses: github/codeql-action/init@v4
         with:
           languages: ${{ matrix.language }}
           build-mode: ${{ matrix.build-mode }}
           queries: security-and-quality
 
-      - name: Derle (CodeQL için)
+      - name: Build (for CodeQL)
         if: matrix.language == 'java-kotlin'
         run: ./gradlew assembleDebug --no-daemon --stacktrace
 
@@ -187,7 +206,7 @@ jobs:
           category: "/language:${{ matrix.language }}"
 
   gizli-anahtar:
-    name: Gizli anahtar taraması (Gitleaks)
+    name: Secret scan (Gitleaks)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -196,18 +215,18 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
-      # İmza anahtarı yalnızca GitHub Secrets'ta durmalı; depoya hiçbir zaman girmemeli.
-      - name: İmza anahtarı dosyası depoda var mı
+      # The signing key must live only in GitHub Secrets; it must never enter the repository.
+      - name: Is a signing key file in the repository?
         run: |
           found=$(git log --all --name-only --pretty=format: | grep -i -E '\.(jks|keystore|p12|pfx)$' | sort -u || true)
           if [ -n "$found" ]; then
-            echo "::error::Depo geçmişinde anahtar dosyası bulundu:"
+            echo "::error::A key file was found in the repository history:"
             echo "$found"
             exit 1
           fi
 
-      # Bulgu varsa iş başarısız olur: sızan bir gizli anahtar geri alınmalıdır.
-      - name: Gitleaks (tüm git geçmişi)
+      # Findings fail the job: a leaked secret must be revoked.
+      - name: Gitleaks (entire git history)
         run: |
           docker run --rm -v "$PWD:/repo" ghcr.io/gitleaks/gitleaks:latest \
             detect --source /repo --redact --report-format sarif --report-path /repo/gitleaks.sarif --verbose
@@ -220,7 +239,7 @@ jobs:
           if-no-files-found: ignore
 
   workflow-guvenligi:
-    name: Workflow güvenliği (zizmor)
+    name: Workflow security (zizmor)
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
@@ -228,8 +247,8 @@ jobs:
         with:
           persist-credentials: false
 
-      # Bulgular işi başarısız yapmaz (rapor amaçlıdır); yalnızca aracın kendisi çökerse iş kırmızı olur.
-      - name: zizmor çalıştır
+      # Findings do not fail the job (informational); the job only turns red if the tool itself crashes.
+      - name: Run zizmor
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -239,11 +258,13 @@ jobs:
           rc=$?
           set -e
           if [ "$rc" -ne 0 ] && [ "$rc" -lt 10 ]; then
-            echo "::error::zizmor çalışamadı (çıkış kodu $rc)"
+            echo "::error::zizmor failed to run (exit code $rc)"
             exit "$rc"
           fi
+          # Exit codes: 10 informational, 11 low, 12 medium, 13 high, 14 critical. High and critical fail the job.
+          echo "zizmor_rc=$rc" >> "$GITHUB_ENV"
 
-      - name: zizmor özeti
+      - name: zizmor summary
         if: always()
         run: |
           if [ -s zizmor.sarif ]; then
@@ -251,8 +272,8 @@ jobs:
           import json
           d = json.load(open("zizmor.sarif"))
           res = [r for run in d.get("runs", []) for r in run.get("results", [])]
-          print("### zizmor özeti\n")
-          print(f"Toplam bulgu: **{len(res)}**\n")
+          print("### zizmor summary\n")
+          print(f"Total findings: **{len(res)}**\n")
           for r in res[:30]:
               loc = r["locations"][0]["physicalLocation"]
               print(f"- `{r['ruleId']}` — {loc['artifactLocation']['uri']}:{loc['region']['startLine']}")
@@ -266,9 +287,17 @@ jobs:
           path: zizmor.sarif
           if-no-files-found: ignore
 
+      - name: Fail on high/critical findings
+        if: always()
+        run: |
+          if [ "${zizmor_rc:-0}" -ge 13 ]; then
+            echo "::error::zizmor reported high or critical findings"
+            exit 1
+          fi
+
   bagimlilik-incelemesi:
-    name: Bağımlılık incelemesi
-    # Yalnızca PR'larda ve herkese açık depoda: PR'ın eklediği/güncellediği bağımlılıklarda bilinen açık arar.
+    name: Dependency review
+    # PRs in public repositories only: looks for known vulnerabilities in the dependencies a PR adds or updates.
     if: ${{ github.event_name == 'pull_request' && github.event.repository.private == false }}
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -276,6 +305,6 @@ jobs:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
-      - uses: actions/dependency-review-action@v5
+      - uses: actions/dependency-review-action@v4
         with:
           fail-on-severity: high

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">SoundMod</string>
-    <string name="xposed_description">Sistem seslerini (klavye, dokunma, ekran görüntüsü, kilit, şarj…) istediğin sesle değiştir.</string>
+    <string name="xposed_description">Replace system sounds (keyboard, touch, screenshot, lock, charging…) with any sound you like.</string>
 </resources>
