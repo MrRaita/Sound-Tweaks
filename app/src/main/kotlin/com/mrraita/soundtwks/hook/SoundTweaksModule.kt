@@ -1,4 +1,4 @@
-package dev.soundmod.nothing.hook
+package com.mrraita.soundtwks.hook
 
 import android.app.Application
 import android.content.Context
@@ -10,8 +10,8 @@ import android.os.Handler
 import android.os.Looper
 import android.provider.Settings
 import android.util.Log
-import dev.soundmod.nothing.BuildConfig
-import dev.soundmod.nothing.core.SoundPaths
+import com.mrraita.soundtwks.BuildConfig
+import com.mrraita.soundtwks.core.SoundPaths
 import io.github.libxposed.api.XposedModule
 import io.github.libxposed.api.XposedModuleInterface
 import java.io.File
@@ -20,7 +20,7 @@ import java.io.File
  * libxposed API 101 entry class.
  *
  *  - system_server ("system" scope): replaces the output of SoundEffectsHelper.getResourceFilePath
- *    with /data/system/soundmod/override/<stockName>.* when present (keyboard/touch sounds).
+ *    with /data/system/soundtweaks/override/<stockName>.* when present (keyboard/touch sounds).
  *  - SystemUI:
  *      · ScreenshotSoundProviderImpl.getScreenshotSound → MediaPlayer with the custom file
  *      · KeyguardViewMediator.playSounds / playTrustedSound → lock, unlock and trusted-device
@@ -28,7 +28,7 @@ import java.io.File
  *
  * Every hook sits in its own try/catch; on failure the stock behavior is used.
  */
-class SoundModule : XposedModule() {
+class SoundTweaksModule : XposedModule() {
 
     @Volatile private var sysUiHooked = false
 
@@ -277,7 +277,7 @@ class SoundModule : XposedModule() {
         }.start()
     }
 
-    // The SoundMod app (a different uid) reads the status file, so it is made world-readable
+    // The Sound Tweaks app (a different uid) reads the status file, so it is made world-readable
     @Suppress("SetWorldReadable")
     private fun writeStatus(path: String, text: String) {
         try {
@@ -291,7 +291,7 @@ class SoundModule : XposedModule() {
     }
 
     private companion object {
-        const val TAG = "SoundMod"
+        const val TAG = "SoundTweaks"
     }
 }
 

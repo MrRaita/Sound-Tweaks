@@ -1,6 +1,6 @@
 @file:OptIn(ExperimentalMaterial3ExpressiveApi::class)
 
-package dev.soundmod.nothing.ui
+package com.mrraita.soundtwks.ui
 
 import android.app.Activity
 import android.os.Build
@@ -28,7 +28,7 @@ import androidx.core.view.WindowCompat
  * @param dynamic   if true (Android 12+) system/wallpaper colors are used; otherwise the selected palette
  */
 @Composable
-fun SoundModTheme(
+fun SoundTweaksTheme(
     themeMode: Int,
     oled: Boolean,
     dynamic: Boolean,

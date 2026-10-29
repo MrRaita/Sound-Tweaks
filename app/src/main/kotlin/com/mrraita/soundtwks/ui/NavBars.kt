@@ -1,4 +1,4 @@
-package dev.soundmod.nothing.ui
+package com.mrraita.soundtwks.ui
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateColorAsState

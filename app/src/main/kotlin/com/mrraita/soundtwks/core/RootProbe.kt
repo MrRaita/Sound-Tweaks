@@ -1,6 +1,9 @@
-package dev.soundmod.nothing.core
+package com.mrraita.soundtwks.core
 
-import dev.soundmod.nothing.BuildConfig
+import androidx.annotation.StringRes
+import com.mrraita.soundtwks.R
+
+import com.mrraita.soundtwks.BuildConfig
 
 /** Short info about the root manager and the system (the Root card in Settings) */
 data class RootInfo(
@@ -8,7 +11,8 @@ data class RootInfo(
     val managerVersion: String = "",
     val suVersion: String = "",
     val kernel: String = "",
-    val kernelMode: String = "",
+    /** String resource id describing the KernelSU mode, 0 if not applicable */
+    @StringRes val kernelModeRes: Int = 0,
     val selinux: String = "",
     val context: String = ""
 )
@@ -75,20 +79,20 @@ object RootProbe {
             ksud.isNotBlank() -> { manager = "KernelSU"; version = ksud }
             magisk.isNotBlank() -> { manager = "Magisk"; version = (magisk + " " + kv["magiskc"].orEmpty()).trim() }
             apd.isNotBlank() -> { manager = "APatch"; version = apd }
-            else -> { manager = "Unknown"; version = "" }
+            else -> { manager = ""; version = "" }
         }
         val lkm = (kv["lkm"]?.toIntOrNull() ?: 0) > 0
         val mode = when {
-            manager == "KernelSU" && lkm -> "LKM (loadable kernel module)"
-            manager == "KernelSU" -> "Built into the kernel (GKI / custom kernel)"
-            else -> ""
+            manager == "KernelSU" && lkm -> R.string.kmode_lkm
+            manager == "KernelSU" -> R.string.kmode_builtin
+            else -> 0
         }
         val info = RootInfo(
             manager = manager,
             managerVersion = version,
             suVersion = kv["suv"].orEmpty(),
             kernel = kv["kernel"].orEmpty(),
-            kernelMode = mode,
+            kernelModeRes = mode,
             selinux = kv["selinux"].orEmpty(),
             context = kv["ctx"].orEmpty()
         )

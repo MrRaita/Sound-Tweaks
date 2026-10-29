@@ -1,4 +1,7 @@
-package dev.soundmod.nothing.ui
+package com.mrraita.soundtwks.ui
+
+import androidx.annotation.StringRes
+import com.mrraita.soundtwks.R
 
 import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
@@ -7,7 +10,7 @@ import androidx.compose.ui.graphics.Color
 
 /** Ready-made color palette: the scheme is generated from a main hue and a saturation multiplier. */
 data class Palette(
-    val name: String,
+    @StringRes val nameRes: Int,
     val hue: Float,
     /** 0 = fully neutral, 1 = fully colored */
     val sat: Float = 1f,
@@ -17,18 +20,18 @@ data class Palette(
 
 object Palettes {
     val list = listOf(
-        Palette("Ocean", 212f),
-        Palette("Turquoise", 178f),
-        Palette("Forest", 140f),
-        Palette("Olive", 78f),
-        Palette("Amber", 38f),
-        Palette("Coral", 10f),
-        Palette("Rose", 338f),
-        Palette("Plum", 305f),
-        Palette("Lavender", 265f),
-        Palette("Night", 235f, 0.7f),
-        Palette("Nothing", 0f, 0f, 4f),
-        Palette("Graphite", 210f, 0.2f)
+        Palette(R.string.pal_ocean, 212f),
+        Palette(R.string.pal_turquoise, 178f),
+        Palette(R.string.pal_forest, 140f),
+        Palette(R.string.pal_olive, 78f),
+        Palette(R.string.pal_amber, 38f),
+        Palette(R.string.pal_coral, 10f),
+        Palette(R.string.pal_rose, 338f),
+        Palette(R.string.pal_plum, 305f),
+        Palette(R.string.pal_lavender, 265f),
+        Palette(R.string.pal_night, 235f, 0.7f),
+        Palette(R.string.pal_nothing, 0f, 0f, 4f),
+        Palette(R.string.pal_graphite, 210f, 0.2f)
     )
 
     private fun c(h: Float, s: Float, l: Float): Color =

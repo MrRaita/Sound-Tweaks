@@ -1,9 +1,13 @@
 @file:OptIn(ExperimentalMaterial3Api::class, ExperimentalMaterial3ExpressiveApi::class)
 
-package dev.soundmod.nothing.ui
+package com.mrraita.soundtwks.ui
 
-import dev.soundmod.nothing.BuildConfig
-import dev.soundmod.nothing.core.SoundPaths
+import com.mrraita.soundtwks.BuildConfig
+import com.mrraita.soundtwks.R
+import com.mrraita.soundtwks.txt
+import com.mrraita.soundtwks.core.AppLocale
+import android.media.AudioManager
+import com.mrraita.soundtwks.core.SoundPaths
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -144,10 +148,10 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.delay
-import dev.soundmod.nothing.core.RootInfo
-import dev.soundmod.nothing.core.SoundCatalog
-import dev.soundmod.nothing.core.SoundSlot
-import dev.soundmod.nothing.core.SystemSound
+import com.mrraita.soundtwks.core.RootInfo
+import com.mrraita.soundtwks.core.SoundCatalog
+import com.mrraita.soundtwks.core.SoundSlot
+import com.mrraita.soundtwks.core.SystemSound
 
 /** All actions the UI calls (collected in one place). */
 data class UiActions(
@@ -166,6 +170,7 @@ data class UiActions(
     val setTargetDb: (Int) -> Unit,
     val reapplyAll: () -> Unit,
     val setThemeMode: (Int) -> Unit,
+    val setLanguage: (String) -> Unit,
     val setOled: (Boolean) -> Unit,
     val setDynamic: (Boolean) -> Unit,
     val setPalette: (Int) -> Unit,
@@ -189,7 +194,7 @@ data class UiActions(
     val setNoHpWarning: (Boolean) -> Unit
 )
 
-private val TAB_TITLES = listOf("Sounds", "Library", "Advanced", "Settings")
+private val TAB_TITLES = listOf(R.string.tab_sounds, R.string.tab_library, R.string.tab_advanced, R.string.tab_settings)
 
 private fun tabIcon(id: Int): ImageVector = when (id) {
     0 -> Icons.Default.Notifications
@@ -201,14 +206,14 @@ private fun tabIcon(id: Int): ImageVector = when (id) {
 // The header overlays the list, so the inner padding Scaffold provides is deliberately unused (lists take their own top padding)
 @Suppress("UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
-fun SoundModScreen(
+fun SoundTweaksScreen(
     state: UiState,
     player: State<PlayerUi>,
     snackbar: SnackbarHostState,
     a: UiActions
 ) {
     var tab by remember { mutableIntStateOf(0) }
-    val titles = TAB_TITLES
+    val titles = TAB_TITLES.map { txt(it) }
     // Settings (3) is always visible; the others follow the user's order, unless hidden
     val visibleTabs = state.tabOrder.filter { it == 3 || it !in state.hiddenTabs }
     val current = if (tab in visibleTabs) tab else visibleTabs.first()
@@ -442,7 +447,7 @@ private fun Header(
                         alpha = (1f - c * 1.7f).coerceIn(0f, 1f)
                     }
             ) {
-                Text("SoundMod", style = bigTitle, color = cs.primary)
+                Text(txt(R.string.app_name), style = bigTitle, color = cs.primary)
                 TabTitle(title, MaterialTheme.typography.titleMedium, cs.onSurfaceVariant, reduceMotion)
             }
             // Narrow view: the tab name rises from below and takes the place of the app name
@@ -465,7 +470,7 @@ private fun Header(
                     .padding(top = 20.dp)
                     .graphicsLayer { translationY = -collapse() * 16.dp.toPx() }
             ) {
-                Icon(Icons.Default.Refresh, contentDescription = "Refresh SystemUI")
+                Icon(Icons.Default.Refresh, contentDescription = txt(R.string.refresh_systemui))
             }
         }
     }
@@ -508,15 +513,15 @@ private fun SoundsTab(
                     modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text("No root access", style = MaterialTheme.typography.titleMedium)
-                        Text("To change sounds, grant SoundMod access in your root manager.", style = MaterialTheme.typography.bodyMedium)
+                        Text(txt(R.string.no_root_title), style = MaterialTheme.typography.titleMedium)
+                        Text(txt(R.string.no_root_body), style = MaterialTheme.typography.bodyMedium)
                         Button(
                             onClick = a.refresh,
                             colors = ButtonDefaults.buttonColors(
                                 containerColor = MaterialTheme.colorScheme.error,
                                 contentColor = MaterialTheme.colorScheme.onError
                             )
-                        ) { Text("Try again") }
+                        ) { Text(txt(R.string.try_again)) }
                     }
                 }
             }
@@ -527,7 +532,7 @@ private fun SoundsTab(
             if (rows.isEmpty()) return@forEach
             val base = running
             running += rows.size
-            item(key = "h_$group") { GroupHeader(group) }
+            item(key = "h_$group") { GroupHeader(txt(group)) }
             itemsIndexed(rows, key = { _, r -> r.slot.id }) { i, ss ->
                 SlotRow(
                     shape = segmentShape(i, rows.size),
@@ -545,13 +550,12 @@ private fun SoundsTab(
         val sheetState = rememberModalBottomSheetState()
         ModalBottomSheet(onDismissRequest = { sheetSlot = null }, sheetState = sheetState) {
             Column(Modifier.padding(horizontal = 24.dp).padding(bottom = 32.dp)) {
-                Text(slot.title, style = MaterialTheme.typography.headlineSmall)
-                Text(slot.desc, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text(txt(slot.titleRes), style = MaterialTheme.typography.headlineSmall)
+                Text(txt(slot.descRes), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 if (slot.sysUiReload) {
                     Spacer(Modifier.height(8.dp))
                     Text(
-                        "Android loads this sound once when SystemUI starts; refreshing is recommended after a change. " +
-                            "To hear it in silent mode too, go to Settings → Advanced → “Force-play lock sounds”.",
+                        txt(R.string.lock_sound_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -560,23 +564,23 @@ private fun SoundsTab(
                 Button(
                     onClick = { pickerSlot = slot; sheetSlot = null },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Choose from system sounds") }
+                ) { Text(txt(R.string.choose_system)) }
                 Spacer(Modifier.height(8.dp))
                 FilledTonalButton(
                     onClick = { a.pickFile(slot); sheetSlot = null },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Choose my own file") }
+                ) { Text(txt(R.string.choose_file)) }
                 slot.fx?.let { fx ->
                     Spacer(Modifier.height(8.dp))
                     OutlinedButton(onClick = { a.testFx(fx) }, modifier = Modifier.fillMaxWidth()) {
-                        Text("Try through the system")
+                        Text(txt(R.string.try_system))
                     }
                 }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { a.applySilent(slot); sheetSlot = null },
                     modifier = Modifier.fillMaxWidth()
-                ) { Text("Mute this sound") }
+                ) { Text(txt(R.string.mute_sound)) }
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = { a.reset(slot); sheetSlot = null },
@@ -584,7 +588,7 @@ private fun SoundsTab(
                 ) {
                     Icon(Icons.Default.Delete, null)
                     Spacer(Modifier.width(8.dp))
-                    Text("Reset to default")
+                    Text(txt(R.string.reset_default))
                 }
             }
         }
@@ -596,7 +600,7 @@ private fun SoundsTab(
         ModalBottomSheet(onDismissRequest = { pickerSlot = null }, sheetState = sheetState) {
             Column(Modifier.fillMaxWidth().fillMaxHeight(0.92f)) {
                 Text(
-                    "Choose a sound for ${slot.title}",
+                    txt(R.string.pick_sound_for, txt(slot.titleRes)),
                     style = MaterialTheme.typography.titleLarge,
                     modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
                 )
@@ -646,7 +650,7 @@ private fun SlotRow(
         ) {
             Column(Modifier.weight(1f)) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(ss.slot.title, style = MaterialTheme.typography.titleMedium)
+                    Text(txt(ss.slot.titleRes), style = MaterialTheme.typography.titleMedium)
                     AnimatedVisibility(visible = custom) {
                         Surface(
                             shape = CircleShape,
@@ -654,7 +658,7 @@ private fun SlotRow(
                             modifier = Modifier.padding(start = 8.dp)
                         ) {
                             Text(
-                                "Custom",
+                                txt(R.string.custom),
                                 style = MaterialTheme.typography.labelSmall,
                                 color = MaterialTheme.colorScheme.onSecondaryContainer,
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
@@ -663,7 +667,7 @@ private fun SlotRow(
                     }
                 }
                 Text(
-                    ss.label ?: "Default",
+                    labelText(ss.label) ?: txt(R.string.default_label),
                     style = MaterialTheme.typography.bodyMedium,
                     color = if (custom) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 1,
@@ -701,7 +705,7 @@ private fun LibraryTab(
         onPick = null,
         listState = listState,
         actions = {
-            IconButton(onClick = a.reloadLibrary) { Icon(Icons.Default.Refresh, "Rescan") }
+            IconButton(onClick = a.reloadLibrary) { Icon(Icons.Default.Refresh, txt(R.string.rescan)) }
         }
     )
 }
@@ -722,7 +726,7 @@ private fun SoundList(
 ) {
     var query by remember { mutableStateOf("") }
     var searching by remember { mutableStateOf(false) }
-    var category by remember { mutableStateOf<String?>(null) }
+    var category by remember { mutableStateOf<Int?>(null) }
     val categories = remember(sounds) { sounds.map { it.category }.distinct() }
     val filtered = remember(sounds, query, category) {
         sounds.filter {
@@ -757,7 +761,7 @@ private fun SoundList(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                if (filtered.size != sounds.size) "${filtered.size} / ${sounds.size} sounds" else "${sounds.size} sounds found",
+                if (filtered.size != sounds.size) txt(R.string.sounds_filtered, filtered.size, sounds.size) else txt(R.string.sounds_found, sounds.size),
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.weight(1f)
@@ -768,7 +772,7 @@ private fun SoundList(
             }) {
                 Icon(
                     if (searching) Icons.Default.Close else Icons.Default.Search,
-                    if (searching) "Close search" else "Search"
+                    if (searching) txt(R.string.close_search) else txt(R.string.search)
                 )
             }
             actions()
@@ -783,7 +787,7 @@ private fun SoundList(
                 onValueChange = { query = it },
                 singleLine = true,
                 shape = CircleShape,
-                placeholder = { Text("Search sounds") },
+                placeholder = { Text(txt(R.string.search_sounds)) },
                 leadingIcon = { Icon(Icons.Default.Search, null) },
                 modifier = Modifier
                     .fillMaxWidth()
@@ -799,7 +803,7 @@ private fun SoundList(
                 FilterChip(
                     selected = category == null,
                     onClick = { category = null },
-                    label = { Text("Hepsi") },
+                    label = { Text(txt(R.string.chip_all)) },
                     shape = CircleShape
                 )
             }
@@ -807,7 +811,7 @@ private fun SoundList(
                 FilterChip(
                     selected = category == c,
                     onClick = { category = if (category == c) null else c },
-                    label = { Text(c) },
+                    label = { Text(txt(c)) },
                     shape = CircleShape
                 )
             }
@@ -817,7 +821,7 @@ private fun SoundList(
                 LoadingIndicator(Modifier.align(Alignment.Center))
             } else if (filtered.isEmpty()) {
                 Text(
-                    "No sounds found",
+                    txt(R.string.no_sounds_found),
                     modifier = Modifier.align(Alignment.Center),
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -868,7 +872,7 @@ private fun SoundRow(
                 Column(Modifier.weight(1f)) {
                     Text(sound.name, style = MaterialTheme.typography.bodyLarge, maxLines = 1, overflow = TextOverflow.Ellipsis)
                     Text(
-                        "${sound.category} · ${sound.partition}",
+                        "${txt(sound.category)} · ${sound.partition}",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -876,7 +880,7 @@ private fun SoundRow(
                 PlayPauseButton(playing = playing, onClick = onPlay)
                 if (onPick != null) {
                     Spacer(Modifier.width(4.dp))
-                    FilledTonalIconButton(onClick = onPick) { Icon(Icons.Default.Check, "Select") }
+                    FilledTonalIconButton(onClick = onPick) { Icon(Icons.Default.Check, txt(R.string.select)) }
                 }
             }
             AnimatedVisibility(
@@ -908,7 +912,7 @@ private fun SoundRow(
 private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) {
     val container = MaterialTheme.colorScheme.surfaceContainerHigh
     val changed = state.slots.filter { it.label != null }
-    val globalText = if (state.normalize) "${state.targetDb} dBFS" else "off"
+    val globalText = if (state.normalize) "${state.targetDb} dBFS" else txt(R.string.off)
 
     LazyColumn(
         state = listState,
@@ -916,26 +920,25 @@ private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) 
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
         // ---- System sound switches ----
-        item { GroupHeader("System sound switches") }
+        item { GroupHeader(txt(R.string.sys_switches_title)) }
         item {
             val s = state.sys
-            val ringerOk = s.ringer == "Normal" && !s.systemMuted
+            val ringerOk = s.ringer == AudioManager.RINGER_MODE_NORMAL && !s.systemMuted
             Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(0, listState)) {
                 SettingsCard(segmentShape(0, 2), container) {
-                    Text("Android's own sound settings", style = MaterialTheme.typography.titleMedium)
+                    Text(txt(R.string.android_sound_settings), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "If one of these is off, the related sounds never play, including the ones you picked. " +
-                            "The switches change the system setting directly; they are the same as the ones in Settings → Sound.",
+                        txt(R.string.sys_switches_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    SwitchRow("Touch sounds", "Keyboard keys and screen touch sounds", s.touchSounds, true) {
+                    SwitchRow(txt(R.string.touch_sounds), txt(R.string.touch_sounds_desc), s.touchSounds, true) {
                         a.setSystemToggle(SysToggle.TOUCH, it)
                     }
-                    SwitchRow("Lock screen sounds", "Lock, unlock and trusted-device sounds", s.lockSounds, true) {
+                    SwitchRow(txt(R.string.lockscreen_sounds), txt(R.string.lockscreen_sounds_desc), s.lockSounds, true) {
                         a.setSystemToggle(SysToggle.LOCK, it)
                     }
-                    SwitchRow("Charging sounds", "Sound played when a charging cable is plugged in", s.chargingSounds, true) {
+                    SwitchRow(txt(R.string.charging_sounds), txt(R.string.charging_sounds_desc), s.chargingSounds, true) {
                         a.setSystemToggle(SysToggle.CHARGING, it)
                     }
                 }
@@ -947,18 +950,18 @@ private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) 
                         )
                         Spacer(Modifier.width(10.dp))
                         Column {
-                            Text("The phone is currently in ${s.ringer} mode", style = MaterialTheme.typography.titleSmall)
+                            Text(txt(R.string.phone_in_mode, ringerName(s.ringer)), style = MaterialTheme.typography.titleSmall)
                             Text(
-                                "System volume ${s.systemVol}/${s.systemMax}" + (if (s.systemMuted) " (muted)" else "") +
-                                    " · Media volume ${s.mediaVol}/${s.mediaMax}",
+                                txt(R.string.system_volume, s.systemVol, s.systemMax) +
+                                    (if (s.systemMuted) " " + txt(R.string.muted_word) else "") +
+                                    " · " + txt(R.string.media_volume, s.mediaVol, s.mediaMax),
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
                     }
                     Text(
-                        if (ringerOk) "Sounds are able to play."
-                        else "While the phone is silent or vibrating, or the system volume is muted, lock and touch sounds do not play. " +
-                            "Turn on the ringer mode or raise the volume.",
+                        if (ringerOk) txt(R.string.sounds_can_play)
+                        else txt(R.string.sounds_blocked),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -967,20 +970,20 @@ private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) 
         }
 
         // ---- Audio processing ----
-        item { GroupHeader("Audio processing") }
+        item { GroupHeader(txt(R.string.audio_processing)) }
         item {
             Column(modifier = Modifier.staggerIn(1, listState)) {
                 SettingsCard(segmentShape(0, 1), container) {
                     SwitchRow(
-                        "Genel normalize",
-                        "Unless set per sound, the sounds you pick are brought to this average level (peaks are softly limited)",
+                        txt(R.string.normalize_global),
+                        txt(R.string.normalize_global_desc),
                         state.normalize, true, a.setNormalize
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) {
-                            Text("Genel hedef seviye", style = MaterialTheme.typography.bodyLarge)
+                            Text(txt(R.string.target_level), style = MaterialTheme.typography.bodyLarge)
                             Text(
-                                "${state.targetDb} dBFS (ortalama)",
+                                txt(R.string.db_average, state.targetDb),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -994,7 +997,7 @@ private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) 
                         ) { Text("+", style = MaterialTheme.typography.titleLarge) }
                     }
                     Text(
-                        "The setting only applies to sounds you pick from now on. To update the existing ones:",
+                        txt(R.string.normalize_apply_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1002,18 +1005,17 @@ private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) 
                         onClick = a.reapplyAll,
                         enabled = state.root == RootState.GRANTED,
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Reprocess all selected sounds") }
+                    ) { Text(txt(R.string.reprocess_all)) }
                 }
             }
         }
 
-        item { GroupHeader("Per-sound level") }
+        item { GroupHeader(txt(R.string.per_sound_level)) }
         if (changed.isEmpty()) {
             item(key = "norm_empty") {
                 SettingsCard(segmentShape(0, 1), container) {
                     Text(
-                        "You have not changed any sound yet. Once you pick a sound in the Sounds tab you can set its own " +
-                            "normalization here.",
+                        txt(R.string.per_sound_empty),
                         style = MaterialTheme.typography.bodyMedium
                     )
                 }
@@ -1035,21 +1037,17 @@ private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) 
         }
 
         // ---- Lock sounds ----
-        item { GroupHeader("Lock sounds") }
+        item { GroupHeader(txt(R.string.lock_sounds_title)) }
         item {
             Column(modifier = Modifier.staggerIn(2, listState)) {
                 SettingsCard(segmentShape(0, 1), container) {
                     SwitchRow(
-                        "Force-play lock sounds",
-                        "SoundMod plays the lock, unlock and trusted-device sounds at the media volume; " +
-                            "they are audible even when the phone is silent or vibrating.",
+                        txt(R.string.force_play),
+                        txt(R.string.force_play_desc),
                         state.forceLock, state.root == RootState.GRANTED, a.setForceLock
                     )
                     Text(
-                        "When off (default) Android's own mechanism is used and nothing is touched. " +
-                            "When on, a hook is added to SystemUI; the sound is played with SoundPool (the engine the " +
-                            "stock lock sound also uses). If the “Lock screen sounds” switch is off or the media volume is 0, " +
-                            "the stock behavior is used.",
+                        txt(R.string.force_play_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1058,20 +1056,17 @@ private fun AdvancedTab(state: UiState, a: UiActions, listState: LazyListState) 
         }
 
         // ---- Headphones ----
-        item { GroupHeader("Headphones") }
+        item { GroupHeader(txt(R.string.headphones)) }
         item {
             Column(modifier = Modifier.staggerIn(3, listState)) {
                 SettingsCard(segmentShape(0, 1), container) {
                     SwitchRow(
-                        "Turn off the headphone volume warning",
-                        "The “loud volume can damage your hearing” warning shown after a reboot will not appear.",
+                        txt(R.string.hp_warning_off),
+                        txt(R.string.hp_warning_desc),
                         state.noHpWarning, state.root == RootState.GRANTED, a.setNoHpWarning
                     )
                     Text(
-                        "The system re-enables this warning at every boot. While this is on, the three audio properties that " +
-                            "enable it are turned off at every boot by a tiny script in /data/adb/soundmod; no hook is added to the system. " +
-                            "If you turn it off the script is deleted and the warning returns from the next boot. Listening " +
-                            "at high volume for a long time can damage your hearing.",
+                        txt(R.string.hp_warning_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1100,9 +1095,9 @@ private fun SlotNormRow(
         label = "normchevron"
     )
     val summary = when (norm.mode) {
-        1 -> "Normalization off"
-        2 -> "Custom · ${norm.db} dBFS"
-        else -> "Genel · $globalText"
+        1 -> txt(R.string.norm_off)
+        2 -> txt(R.string.custom_db, norm.db)
+        else -> txt(R.string.global_summary, globalText)
     }
     Card(
         shape = shape,
@@ -1118,7 +1113,7 @@ private fun SlotNormRow(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Column(Modifier.weight(1f)) {
-                    Text(ss.slot.title, style = MaterialTheme.typography.titleSmall)
+                    Text(txt(ss.slot.titleRes), style = MaterialTheme.typography.titleSmall)
                     Text(
                         summary,
                         style = MaterialTheme.typography.bodySmall,
@@ -1127,7 +1122,7 @@ private fun SlotNormRow(
                 }
                 Icon(
                     Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (open) "Collapse" else "Expand",
+                    contentDescription = if (open) txt(R.string.collapse) else txt(R.string.expand),
                     modifier = Modifier.graphicsLayer { rotationZ = rotation }
                 )
             }
@@ -1141,7 +1136,7 @@ private fun SlotNormRow(
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Global", "Off", "Custom").forEachIndexed { i, t ->
+                        listOf(txt(R.string.mode_global), txt(R.string.off), txt(R.string.custom)).forEachIndexed { i, t ->
                             FilterChip(
                                 selected = norm.mode == i,
                                 onClick = { onChange(i, norm.db) },
@@ -1153,7 +1148,7 @@ private fun SlotNormRow(
                     if (norm.mode == 2) {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                "${norm.db} dBFS (ortalama)",
+                                txt(R.string.db_average, norm.db),
                                 style = MaterialTheme.typography.bodyMedium,
                                 modifier = Modifier.weight(1f)
                             )
@@ -1170,7 +1165,7 @@ private fun SlotNormRow(
                         onClick = onApply,
                         enabled = enabled,
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Apply to this sound") }
+                    ) { Text(txt(R.string.apply_to_sound)) }
                 }
             }
         }
@@ -1190,8 +1185,8 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
         contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = LocalListTopPadding.current, bottom = LocalListBottomPadding.current),
         verticalArrangement = Arrangement.spacedBy(3.dp)
     ) {
-        // ---- Durum ----
-        item { GroupHeader("Durum") }
+        // ---- Status ----
+        item { GroupHeader(txt(R.string.status)) }
         item {
             val info = state.rootInfo
             Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(0, listState)) {
@@ -1199,26 +1194,25 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                     shape = segmentShape(0, 2), container = container,
                     title = "Root", ok = state.root == RootState.GRANTED,
                     summary = when (state.root) {
-                        RootState.GRANTED -> "Aktif · ${info.manager}" +
+                        RootState.GRANTED -> txt(R.string.active_manager, info.manager.ifBlank { txt(R.string.unknown) }) +
                             if (info.selinux.isNotBlank()) " · SELinux ${info.selinux}" else ""
-                        RootState.DENIED -> "Not granted"
-                        RootState.UNKNOWN -> "Kontrol ediliyor…"
+                        RootState.DENIED -> txt(R.string.not_granted)
+                        RootState.UNKNOWN -> txt(R.string.checking)
                     },
                     text = when (state.root) {
-                        RootState.GRANTED -> "Root izni verildi"
-                        RootState.DENIED -> "No root access. Grant SoundMod access in your root manager."
-                        RootState.UNKNOWN -> "Kontrol ediliyor…"
+                        RootState.GRANTED -> txt(R.string.root_granted)
+                        RootState.DENIED -> txt(R.string.root_denied_msg)
+                        RootState.UNKNOWN -> txt(R.string.checking)
                     },
                     details = rootDetails(info)
-                ) { OutlinedButton(onClick = a.refresh) { Text("Check again") } }
+                ) { OutlinedButton(onClick = a.refresh) { Text(txt(R.string.check_again)) } }
                 StatusCard(
                     shape = segmentShape(1, 2), container = container,
-                    title = "Vector module", ok = state.hookStatus != null,
+                    title = txt(R.string.vector_module), ok = state.hookStatus != null,
                     summary = hookSummary(state.hookStatus),
                     text = state.hookStatus?.let {
-                        if (it.contains("ERROR")) "Some hooks are not working" else "Hooks loaded"
-                    } ?: ("The hooks have not run yet. Enable SoundMod in Vector, select “System Framework” and " +
-                        "“System UI” in its scope, then reboot."),
+                        if (it.contains("ERROR")) txt(R.string.hooks_some_failing) else txt(R.string.hooks_loaded)
+                    } ?: (txt(R.string.hooks_not_run)),
                     details = hookDetails(state.hookStatus),
                     labelWidth = 120.dp
                 ) {}
@@ -1226,13 +1220,13 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
         }
 
         // ---- Appearance ----
-        item { GroupHeader("Appearance") }
+        item { GroupHeader(txt(R.string.appearance)) }
         item {
             val dynamicOk = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
             Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(1, listState)) {
                 SettingsCard(segmentShape(0, 4), container) {
-                    Text("Tema", style = MaterialTheme.typography.titleMedium)
-                    val modes = listOf("System", "Light", "Dark")
+                    Text(txt(R.string.theme), style = MaterialTheme.typography.titleMedium)
+                    val modes = listOf(txt(R.string.theme_system), txt(R.string.theme_light), txt(R.string.theme_dark))
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                         modes.forEachIndexed { i, t ->
                             FilterChip(
@@ -1245,20 +1239,37 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         }
                     }
                     SwitchRow(
-                        "OLED (saf siyah)",
-                        "Makes the background black in the dark theme; also applied when the system switches to dark",
+                        txt(R.string.oled),
+                        txt(R.string.oled_desc),
                         state.oled, true, a.setOled
                     )
+                    Text(txt(R.string.language), style = MaterialTheme.typography.titleMedium)
+                    val langs = listOf(
+                        AppLocale.SYSTEM to txt(R.string.lang_system),
+                        AppLocale.EN to txt(R.string.lang_en),
+                        AppLocale.TR to txt(R.string.lang_tr)
+                    )
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        langs.forEach { (code, name) ->
+                            FilterChip(
+                                selected = state.language == code,
+                                onClick = { if (state.language != code) a.setLanguage(code) },
+                                label = { Text(name, maxLines = 1, modifier = Modifier.fillMaxWidth(), textAlign = TextAlign.Center) },
+                                shape = CircleShape,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+                    }
                 }
                 SettingsCard(segmentShape(1, 4), container) {
                     SwitchRow(
-                        "Use system colors",
-                        if (dynamicOk) "Follows the wallpaper and system theme (Material You)" else "Not supported on this Android version",
+                        txt(R.string.use_system_colors),
+                        if (dynamicOk) txt(R.string.dynamic_supported) else txt(R.string.dynamic_unsupported),
                         state.dynamicColor && dynamicOk, dynamicOk, a.setDynamic
                     )
                     val paletteActive = !(state.dynamicColor && dynamicOk)
                     Text(
-                        "Renk paleti",
+                        txt(R.string.color_palette),
                         style = MaterialTheme.typography.titleSmall,
                         modifier = Modifier.alpha(if (paletteActive) 1f else 0.5f)
                     )
@@ -1266,7 +1277,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         itemsIndexed(Palettes.list) { i, p ->
                             Swatch(
                                 color = Palettes.swatch(p),
-                                name = p.name,
+                                name = txt(p.nameRes),
                                 selected = paletteActive && state.palette == i,
                                 onClick = { a.setPalette(i) }
                             )
@@ -1274,25 +1285,24 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                     }
                     if (!paletteActive) {
                         Text(
-                            "Picking a palette turns the system colors off automatically.",
+                            txt(R.string.palette_note),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
                 SettingsCard(segmentShape(2, 4), container) {
-                    SwitchRow("Reduce animations", "Calmer transitions", state.reduceMotion, true, a.setReduceMotion)
+                    SwitchRow(txt(R.string.reduce_animations), txt(R.string.calmer_transitions), state.reduceMotion, true, a.setReduceMotion)
                 }
                 SettingsCard(segmentShape(3, 4), container) {
-                    Text("Bottom navigation bar", style = MaterialTheme.typography.titleMedium)
+                    Text(txt(R.string.bottom_bar), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "The list order is the left-to-right order in the bar. Press and hold the ≡ icon on the left and drag to " +
-                            "reorder, and hide the ones you do not want. The Settings tab is always visible.",
+                        txt(R.string.bottom_bar_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        listOf("Wide", "Compact").forEachIndexed { i, t ->
+                        listOf(txt(R.string.bar_wide), txt(R.string.bar_compact)).forEachIndexed { i, t ->
                             FilterChip(
                                 selected = state.navStyle == i,
                                 onClick = { a.setNavStyle(i) },
@@ -1307,15 +1317,13 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
         }
 
         // ---- Tools ----
-        item { GroupHeader("Tools") }
+        item { GroupHeader(txt(R.string.tools)) }
         item {
             Column(verticalArrangement = Arrangement.spacedBy(3.dp), modifier = Modifier.staggerIn(2, listState)) {
                 SettingsCard(segmentShape(0, 2), container) {
-                    Text("SystemUI", style = MaterialTheme.typography.titleMedium)
+                    Text(txt(R.string.systemui), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "If you just enabled the module or something gets stuck you can refresh SystemUI " +
-                            "(the button at the top right does the same). The screen redraws for a few seconds; open " +
-                            "apps are not closed. No sound setting does this on its own.",
+                        txt(R.string.systemui_note),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1323,12 +1331,12 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         onClick = onRestartClick,
                         enabled = state.root == RootState.GRANTED,
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Refresh SystemUI") }
+                    ) { Text(txt(R.string.refresh_systemui)) }
                 }
                 SettingsCard(segmentShape(1, 2), container) {
-                    Text("Diagnostics", style = MaterialTheme.typography.titleMedium)
+                    Text(txt(R.string.diagnostics), style = MaterialTheme.typography.titleMedium)
                     Text(
-                        "Collects file permissions, settings, hook status, the last SystemUI event and SELinux denials into one report.",
+                        txt(R.string.diagnostics_desc),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -1336,11 +1344,11 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
                         onClick = a.buildReport,
                         enabled = state.root == RootState.GRANTED,
                         modifier = Modifier.fillMaxWidth()
-                    ) { Text("Generate diagnostic report") }
+                    ) { Text(txt(R.string.generate_report)) }
                     if (BuildConfig.VERBOSE_LOG) {
                         SwitchRow(
-                            "Verbose event log (pre-release)",
-                            "Writes lock and screenshot events to the report. Only available in pre-release builds.",
+                            txt(R.string.verbose_log),
+                            txt(R.string.verbose_log_desc),
                             state.debugLog, state.root == RootState.GRANTED, a.setDebugLog
                         )
                     }
@@ -1350,7 +1358,7 @@ private fun SettingsTab(state: UiState, a: UiActions, listState: LazyListState, 
 
         item {
             Text(
-                "SoundMod 0.12.0",
+                txt(R.string.app_name) + " " + BuildConfig.VERSION_NAME,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(start = 12.dp, top = 16.dp)
@@ -1418,7 +1426,7 @@ private fun StatusCard(
                 }
                 Icon(
                     Icons.Default.KeyboardArrowDown,
-                    contentDescription = if (expanded) "Collapse" else "Expand",
+                    contentDescription = if (expanded) txt(R.string.collapse) else txt(R.string.expand),
                     modifier = Modifier.graphicsLayer { rotationZ = rotation }
                 )
             }
@@ -1530,7 +1538,7 @@ private fun ReportSheet(text: String, onDismiss: () -> Unit) {
             Modifier.fillMaxWidth().fillMaxHeight(0.9f).padding(horizontal = 20.dp).padding(bottom = 16.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            Text("Diagnostic report", style = MaterialTheme.typography.titleLarge)
+            Text(txt(R.string.report_title), style = MaterialTheme.typography.titleLarge)
             Surface(
                 shape = MaterialTheme.shapes.large,
                 color = MaterialTheme.colorScheme.surfaceContainerHigh,
@@ -1547,9 +1555,9 @@ private fun ReportSheet(text: String, onDismiss: () -> Unit) {
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = {
                     val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-                    cm.setPrimaryClip(ClipData.newPlainText("SoundMod raporu", text))
-                }) { Text("Kopyala") }
-                OutlinedButton(onClick = onDismiss) { Text("Close") }
+                    cm.setPrimaryClip(ClipData.newPlainText(txt(R.string.report_clip_label), text))
+                }) { Text(txt(R.string.copy)) }
+                OutlinedButton(onClick = onDismiss) { Text(txt(R.string.close)) }
             }
         }
     }
@@ -1611,37 +1619,35 @@ private fun timeText(pos: Int, dur: Int): String {
 
 private fun rootDetails(i: RootInfo): List<Pair<String, String>> = buildList {
     if (i.manager.isNotBlank()) {
-        add("Manager" to (i.manager + if (i.managerVersion.isNotBlank()) " · ${i.managerVersion}" else ""))
+        add(txt(R.string.root_manager) to (i.manager + if (i.managerVersion.isNotBlank()) " · ${i.managerVersion}" else ""))
     }
-    if (i.suVersion.isNotBlank()) add("su version" to i.suVersion)
-    if (i.kernel.isNotBlank()) add("Kernel" to i.kernel)
-    if (i.kernelMode.isNotBlank()) add("Mod" to i.kernelMode)
+    if (i.suVersion.isNotBlank()) add(txt(R.string.root_su_version) to i.suVersion)
+    if (i.kernel.isNotBlank()) add(txt(R.string.root_kernel) to i.kernel)
+    if (i.kernelModeRes != 0) add(txt(R.string.root_mode) to txt(i.kernelModeRes))
     if (i.selinux.isNotBlank()) add("SELinux" to i.selinux)
-    if (i.context.isNotBlank()) add("Context" to i.context)
+    if (i.context.isNotBlank()) add(txt(R.string.root_context) to i.context)
 }
 
 @Composable
 private fun IntroDialog(onDismiss: () -> Unit) {
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Before you start") },
+        title = { Text(txt(R.string.intro_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                IntroItem("Root access", "Sounds are deployed through root. Your root manager will ask for permission.")
+                IntroItem(txt(R.string.intro_root_title), txt(R.string.intro_root_body))
                 IntroItem(
-                    "Enable in Vector",
-                    "Turn SoundMod on; make sure System Framework and System UI are selected in its scope, then reboot the device."
+                    txt(R.string.intro_vector_title),
+                    txt(R.string.intro_vector_body)
                 )
                 IntroItem(
-                    "Refresh SystemUI (Settings → Tools)",
-                    "If you just enabled the module or the lock/screenshot sounds do not play, this restarts SystemUI " +
-                        "without rebooting the device. The screen redraws for a few seconds; open " +
-                        "apps are not closed. No setting does this on its own; you are asked first."
+                    txt(R.string.intro_refresh_title),
+                    txt(R.string.intro_refresh_body)
                 )
-                IntroItem("If something is stuck", "Settings → Tools → Generate diagnostic report shows what is not working.")
+                IntroItem(txt(R.string.intro_stuck_title), txt(R.string.intro_stuck_body))
             }
         },
-        confirmButton = { TextButton(onClick = onDismiss) { Text("Got it") } }
+        confirmButton = { TextButton(onClick = onDismiss) { Text(txt(R.string.got_it)) } }
     )
 }
 
@@ -1661,9 +1667,9 @@ private fun IntroItem(title: String, body: String) {
 private fun hookDetails(status: String?): List<Pair<String, String>> {
     if (status.isNullOrBlank()) return emptyList()
     val names = mapOf(
-        "SoundEffectsHelper" to "Keyboard and touch",
-        "Screenshot" to "Screenshot",
-        "Keyguard" to "Lock screen"
+        "SoundEffectsHelper" to txt(R.string.hook_keyboard_touch),
+        "Screenshot" to txt(R.string.hook_screenshot),
+        "Keyguard" to txt(R.string.hook_lockscreen)
     )
     var framework = ""
     val rows = ArrayList<Pair<String, String>>()
@@ -1672,7 +1678,9 @@ private fun hookDetails(status: String?): List<Pair<String, String>> {
         if (body.isEmpty()) continue
         val br = Regex("""\s*\[([^\]]*)]\s*$""").find(body)
         if (br != null) {
-            framework = br.groupValues[1].replace(", API", " · framework API")
+            val fw = br.groupValues[1]
+            val apiAt = fw.indexOf(", API ")
+            framework = if (apiAt >= 0) fw.substring(0, apiAt) + " · " + txt(R.string.framework_api, fw.substring(apiAt + 6)) else fw
             body = body.substring(0, br.range.first)
         }
         val parts = ArrayList<String>()
@@ -1693,25 +1701,25 @@ private fun hookDetails(status: String?): List<Pair<String, String>> {
             val name = part.substringBefore(' ')
             val value = part.substringAfter(' ', "").trim()
             val shown = when {
-                value == "OK" -> "Working"
-                value.startsWith("ERROR") -> "Error" + value.removePrefix("ERROR").ifBlank { "" }
-                value.startsWith("stock") -> "Stock behavior" + value.removePrefix("stock")
+                value == "OK" -> txt(R.string.hook_working)
+                value.startsWith("ERROR") -> txt(R.string.hook_error) + value.removePrefix("ERROR").ifBlank { "" }
+                value.startsWith("stock") -> txt(R.string.hook_stock) + value.removePrefix("stock")
                 else -> value.ifBlank { "—" }
             }
             rows += (names[name] ?: name) to shown
         }
     }
     if (framework.isNotBlank()) {
-        rows.add(0, "Framework" to framework)
-        rows.add(1, "Module API" to SoundPaths.MODULE_API.toString())
+        rows.add(0, txt(R.string.hook_framework) to framework)
+        rows.add(1, txt(R.string.hook_module_api) to SoundPaths.MODULE_API.toString())
     }
     return rows
 }
 
 private fun hookSummary(status: String?): String = when {
-    status == null -> "Not working"
-    status.contains("ERROR") -> "Some hooks are not working"
-    else -> "Kancalar aktif"
+    status == null -> txt(R.string.hook_not_working)
+    status.contains("ERROR") -> txt(R.string.hooks_some_failing)
+    else -> txt(R.string.hooks_active)
 }
 
 @Composable
@@ -1720,8 +1728,8 @@ private fun RestartPromptDialog(p: RestartPrompt, onConfirm: () -> Unit, onDismi
         onDismissRequest = onDismiss,
         title = { Text(p.title) },
         text = { Text(p.text) },
-        confirmButton = { TextButton(onClick = onConfirm) { Text("Yenile") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Later") } }
+        confirmButton = { TextButton(onClick = onConfirm) { Text(txt(R.string.refresh)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(txt(R.string.later)) } }
     )
 }
 
@@ -1731,13 +1739,11 @@ private fun RestartConfirmDialog(onConfirm: (Boolean) -> Unit, onDismiss: () -> 
     var dontShowAgain by remember { mutableStateOf(false) }
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("Refresh SystemUI?") },
+        title = { Text(txt(R.string.restart_confirm_title)) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    "The status bar, notification shade and lock screen restart for a few seconds; the screen may " +
-                        "flicker briefly. Open apps and your data are not affected. It helps if you just enabled the module or " +
-                        "a sound is not playing."
+                    txt(R.string.restart_confirm_body)
                 )
                 // The row and the checkbox stay separately tappable; no gray ripple is shown
                 CompositionLocalProvider(LocalRippleConfiguration provides null) {
@@ -1751,13 +1757,13 @@ private fun RestartConfirmDialog(onConfirm: (Boolean) -> Unit, onDismiss: () -> 
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Checkbox(checked = dontShowAgain, onCheckedChange = { dontShowAgain = it })
-                        Text("Do not show again", style = MaterialTheme.typography.bodyMedium)
+                        Text(txt(R.string.dont_show_again), style = MaterialTheme.typography.bodyMedium)
                     }
                 }
             }
         },
-        confirmButton = { TextButton(onClick = { onConfirm(dontShowAgain) }) { Text("Yenile") } },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Cancel") } }
+        confirmButton = { TextButton(onClick = { onConfirm(dontShowAgain) }) { Text(txt(R.string.refresh)) } },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(txt(R.string.cancel)) } }
     )
 }
 
@@ -1809,7 +1815,7 @@ private fun TabOrderEditor(state: UiState, a: UiActions) {
             ) {
                 Icon(
                     Icons.Default.Menu,
-                    contentDescription = "Press and hold, then drag to move",
+                    contentDescription = txt(R.string.drag_to_move),
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier
                         .size(44.dp)
@@ -1841,7 +1847,7 @@ private fun TabOrderEditor(state: UiState, a: UiActions) {
                 Spacer(Modifier.width(8.dp))
                 Icon(tabIcon(id), null, tint = MaterialTheme.colorScheme.onSurfaceVariant)
                 Spacer(Modifier.width(12.dp))
-                Text(TAB_TITLES[id], style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
+                Text(txt(TAB_TITLES[id]), style = MaterialTheme.typography.bodyLarge, modifier = Modifier.weight(1f))
                 Switch(
                     checked = shown,
                     onCheckedChange = { a.setTabHidden(id, !it) },
@@ -1850,4 +1856,20 @@ private fun TabOrderEditor(state: UiState, a: UiActions) {
             }
         }
     }
+}
+
+
+/** Localized text for a stored sound label: "sys:<name>", "file:<name>" or "silent". */
+private fun labelText(raw: String?): String? = when {
+    raw == null -> null
+    raw.startsWith("sys:") -> txt(R.string.label_system, raw.removePrefix("sys:"))
+    raw.startsWith("file:") -> txt(R.string.label_file, raw.removePrefix("file:"))
+    raw == "silent" -> txt(R.string.label_silent)
+    else -> raw
+}
+
+private fun ringerName(mode: Int): String = when (mode) {
+    AudioManager.RINGER_MODE_NORMAL -> txt(R.string.ringer_normal)
+    AudioManager.RINGER_MODE_VIBRATE -> txt(R.string.ringer_vibrate)
+    else -> txt(R.string.ringer_silent)
 }

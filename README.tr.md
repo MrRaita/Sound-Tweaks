@@ -1,11 +1,12 @@
-# SoundMod
+# Sound Tweaks
 
 🇬🇧 [English](README.md) · 🇹🇷 Türkçe
 
-> Uygulama arayüzü şu an İngilizcedir (sekmeler: **Sounds**, **Library**, **Advanced**, **Settings**). Bu belge İngilizce README'nin Türkçe çevirisidir; farklılık varsa İngilizce olan geçerlidir.
+> Bu belge İngilizce README'nin Türkçe çevirisidir; farklılık varsa İngilizce olan geçerlidir.
 
 Android sistem seslerini (klavye, dokunma, ekran görüntüsü, kilit ekranı, şarj, dock) değiştirmeye yarayan,
-LSPosed/Vector modülü ve yönetim uygulaması. Arayüz Material 3 Expressive ile yazılmıştır.
+LSPosed/Vector modülü ve yönetim uygulaması. Arayüz Material 3 Expressive ile yazılmıştır; İngilizce ve Türkçe desteklenir (varsayılan olarak sistem dilini izler,
+Ayarlar → Görünüm → Dil ile biri zorlanabilir). Paket adı `com.mrraita.soundtwks`.
 
 Sistem dosyaları değiştirilmez. Seçilen sesler ayrı bir depoda tutulur ve ilgili sistem süreçlerinde yalnızca
 ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler sıfırlandığında sistem kendi varsayılanlarına döner.
@@ -56,25 +57,25 @@ Geliştirme ve test ortamı: Nothing Phone (4a), Nothing OS 4.1, Android 16, Ker
 
 1. APK, deponun **Releases** sayfasından (ya da **Actions** çıktısından) indirilip kurulur.
 2. Uygulama açılır ve root izni verilir.
-3. Vector yöneticisinde SoundMod etkinleştirilir. Kapsamda **System Framework** ve **System UI** seçili olmalıdır.
+3. Vector yöneticisinde Sound Tweaks etkinleştirilir. Kapsamda **System Framework** ve **System UI** seçili olmalıdır.
 4. Cihaz yeniden başlatılır.
-5. Uygulamada **Settings** sekmesindeki Vector kartı kancaların aktif olduğunu göstermelidir.
+5. Uygulamada **Ayarlar** sekmesindeki Vector kartı kancaların aktif olduğunu göstermelidir.
 
 ## Kullanım
 
-- **Sesler (Sounds):** Bir sese dokunulduğunda sistem seslerinden seçme, kendi dosyasını seçme, susturma ya da varsayılana
+- **Sesler:** Bir sese dokunulduğunda sistem seslerinden seçme, kendi dosyasını seçme, susturma ya da varsayılana
   dönme seçenekleri açılır. Dosyalar çözülüp WAV olarak depoya yazılır.
-- **Kütüphane (Library):** Bulunan sistem sesleri filtrelenir, arama simgesiyle aranır ve dinlenir.
-- **Gelişmiş (Advanced):** Sistem ses anahtarları, ses işleme (genel ve ses başına normalize), kilit seslerini zorla çal,
+- **Kütüphane:** Bulunan sistem sesleri filtrelenir, arama simgesiyle aranır ve dinlenir.
+- **Gelişmiş:** Sistem ses anahtarları, ses işleme (genel ve ses başına normalize), kilit seslerini zorla çal,
   kulaklık uyarısını kapat.
-- **Ayarlar (Settings):** Durum kartları (Root ve Vector modülü), tema ve renkler, alt çubuk düzeni, araçlar (Sistem Arayüzünü
+- **Ayarlar:** Durum kartları (Root ve Vector modülü), tema ve renkler, alt çubuk düzeni, araçlar (Sistem Arayüzünü
   yenileme, tanı raporu).
 
 ## Nasıl çalışır
 
 ### Ses deposu
 
-Seçilen sesler root ile `/data/system/soundmod` altına yazılır ve herkesin okuyabildiği `system_file` SELinux
+Seçilen sesler root ile `/data/system/soundtweaks` altına yazılır ve herkesin okuyabildiği `system_file` SELinux
 bağlamıyla işaretlenir.
 
 - `override/<StokAdı>.<uzantı>`: hook'ların yönlendirdiği dosyalar
@@ -92,7 +93,7 @@ açılırken satırlar sırayla belirir. "Animasyonları azalt" açıkken geçi�
 ### Hook'lar
 
 libxposed API 101 ile yazılmıştır (`minApiVersion = targetApiVersion = 101`). Giriş sınıfı
-`dev.soundmod.nothing.hook.SoundModule`, meta veriler `app/src/main/resources/META-INF/xposed/` altındadır.
+`com.mrraita.soundtwks.hook.SoundTweaksModule`, meta veriler `app/src/main/resources/META-INF/xposed/` altındadır.
 
 | Süreç | Sınıf / metot | Amaç |
 |---|---|---|
@@ -100,7 +101,7 @@ libxposed API 101 ile yazılmıştır (`minApiVersion = targetApiVersion = 101`)
 | SystemUI | `ScreenshotSoundProviderImpl.getScreenshotSound` | Ekran görüntüsü sesini değiştirir |
 | SystemUI | `KeyguardViewMediator.playSounds`, `playTrustedSound` | Yalnızca "zorla çal" modunda kilit seslerini çalar |
 
-Vector kartında "Framework" satırı Vector'ün kendi API sürümünü, "Module API" satırı SoundMod'un derlendiği API'yi
+Vector kartında "Çerçeve" satırı Vector'ün kendi API sürümünü, "Modül API" satırı Sound Tweaks'in derlendiği API'yi
 (101) gösterir; ikisinin farklı olması normaldir. Her hook ayrı bir `try/catch` içindedir; hata durumunda stok
 davranış sürer. Kilit sesleri varsayılanda stok
 mekanizmayla çalar: sistem `lock_sound`, `unlock_sound` ve `trusted_sound` ayarlarındaki yolu Sistem Arayüzü açılırken
@@ -109,11 +110,11 @@ bir kez yükler. "Zorla çal" modu kapalıyken SystemUI'a hook eklenmez.
 ### Kulaklık ses uyarısı
 
 Android, yeniden başlatmadan sonra kulaklıkta ses belirli bir seviyenin üzerine çıkarılırken bir uyarı gösterir. Uyarıyı
-açılışta okunan üç sistem özelliği denetler. Seçenek açıldığında SoundMod şunları yapar:
+açılışta okunan üç sistem özelliği denetler. Seçenek açıldığında Sound Tweaks şunları yapar:
 
-- `/data/adb/soundmod/hp_warning.sh` betiğini yazar; betik `audio.safemedia.bypass=true`,
+- `/data/adb/soundtweaks/hp_warning.sh` betiğini yazar; betik `audio.safemedia.bypass=true`,
   `audio.safemedia.force=false` ve `audio.safemedia.csd.force=false` değerlerini ayarlar (`resetprop`, yoksa `setprop`).
-- Sistem başlamadan önce çalışsın diye `/data/adb/post-fs-data.d/soundmod_hp_warning.sh` içine yalnızca betiği çağıran
+- Sistem başlamadan önce çalışsın diye `/data/adb/post-fs-data.d/soundtweaks_hp_warning.sh` içine yalnızca betiği çağıran
   tek satır koyar.
 - Özellikleri o anda da bir kez ayarlar, böylece yeniden başlatma beklemek gerekmez.
 
@@ -121,7 +122,7 @@ Seçenek kapatılınca iki dosya da silinir ve uyarı sonraki açılıştan itib
 eklenmez. Uygulamayı kaldırmadan önce seçeneği kapatmak gerekir; aksi halde betik `/data/adb` altında kalır. Elle temizlemek için:
 
 ```sh
-su -c "rm -rf /data/adb/soundmod /data/adb/post-fs-data.d/soundmod_hp_warning.sh"
+su -c "rm -rf /data/adb/soundtweaks /data/adb/post-fs-data.d/soundtweaks_hp_warning.sh"
 ```
 
 ### Ses işleme
@@ -139,18 +140,18 @@ taşırıyorsa yumuşak limiter uygulanır.
   yalnızca dizinin değişim zamanı sorgulanır.
 - Yalnızca ses akışındaki metotlar derlenmiş koddan çıkarılır (deopt).
 - Kulaklık uyarısı betiği yalnızca açılışta bir kez çalışır ve üç özellik ayarlayıp çıkar.
-- Ayrıntılı olay kaydı yalnızca ön sürümlerde bulunur ve varsayılan olarak kapalıdır; kararlı sürümde bu kod hiç
+- Ayrıntılı olay kaydı yalnızca ön sürümlerde ve debug sürümlerinde bulunur, varsayılan olarak kapalıdır; release sürümde bu kod hiç
   çalışmaz.
 
 ## Sorun giderme
 
-- **Sesler çalmıyor:** Advanced sekmesindeki "System sound switches" kartında dokunma, kilit ekranı ve şarj sesleri
+- **Sesler çalmıyor:** Gelişmiş sekmesindeki "Sistem ses anahtarları" kartında dokunma, kilit ekranı ve şarj sesleri
   açık olmalı, zil modu normal olmalıdır. Telefon sessiz ya da titreşimdeyken kilit ve dokunma sesleri çalmaz;
   kilit sesleri için "zorla çal" modu bunu aşar.
 - **Kilit sesi değişmedi:** Kilit sesleri Sistem Arayüzü açılırken yüklendiği için değişiklikten sonra Sistem Arayüzünün
   yenilenmesi gerekir (uygulama bunu sorar).
 - **Vector kartı kırmızı:** Modül etkin değil ya da kapsam eksik; kapsam ve yeniden başlatma kontrol edilmelidir.
-- **Tanılama:** Settings → Tools → Generate diagnostic report. Ön sürümlerde "Verbose event log" açıkken son SystemUI
+- **Tanılama:** Ayarlar → Araçlar → Tanı raporu oluştur. Ön sürümlerde "Ayrıntılı olay kaydı" açıkken son SystemUI
   olayı da rapora yazılır.
 - **Kulaklık uyarısı hâlâ çıkıyor:** Kök yöneticisi `post-fs-data.d` betiklerini çalıştırmıyor olabilir ya da uyarıyı
   açılışta okuyan özellikler üretici tarafından ezilmiş olabilir; seçeneği açıp cihazı yeniden başlat ve tanı raporuna bak.
@@ -167,14 +168,14 @@ gradle wrapper --gradle-version <gradle-wrapper.properties içindeki sürüm>   
 
 `versionName` `app/build.gradle.kts` içindedir; `versionCode` CI çalışma numarasından gelir. Yerel derlemede imza
 anahtarı verilmezse sürüm APK'sı debug anahtarıyla imzalanır. Ayrıntılı olay kaydı yalnızca CI ön derlemesinde
-(`SOUNDMOD_VERBOSE=true`) APK'ya girer; yerel ve kararlı derlemelerde yoktur.
+(`SOUNDTWEAKS_VERBOSE=true`) ve debug derlemelerinde APK'ya girer; release derlemelerinde yoktur.
 
 ## CI/CD
 
 | Akış | Tetikleyici | Çıktı |
 |---|---|---|
 | `prebuild.yml` (Pre-build) | Her push, PR ve elle | İmzalı APK (artifact, ayrıntılı olay kaydı dahil) ve varsayılan dalda `pre-<çalışma no>` etiketli ön sürüm (son 10 saklanır) |
-| `release.yml` (Stable release) | Yalnızca elle | `v<versionName>` etiketli kararlı sürüm (ayrıntılı olay kaydı yok); imza anahtarı yoksa başarısız olur, aynı sürüm numarası varsa durur |
+| `release.yml` (Release) | Yalnızca elle | `v<versionName>` etiketli tek bir GitHub sürümü; aynı sürümün **hem** release APK'sı (`SoundTweaks-<sürüm>.apk`) hem de debug APK'sı (`SoundTweaks-<sürüm>-debug.apk`, ayrıntılı olay kaydıyla) eklenir; imza anahtarı yoksa başarısız olur, aynı sürüm numarası varsa durur |
 | `build-apk.yml` | Yukarıdakiler çağırır | Ortak derleme ve imzalama adımları |
 | `security.yml` (Security and quality scan) | Push, PR, haftalık, elle | Android Lint, Semgrep, CodeQL (Java/Kotlin ve GitHub Actions, `security-and-quality`), Gitleaks (git geçmişinde gizli anahtar ve imza anahtarı dosyası), zizmor (workflow güvenliği), PR'larda bağımlılık incelemesi |
 | `dependabot.yml` | Haftalık | Gradle ve GitHub Actions sürüm güncellemeleri (gruplu); libxposed API'sinin büyük sürüm atlaması yok sayılır |
@@ -188,7 +189,7 @@ Sürüm sayfaları GitHub CLI (`gh release create`) ile oluşturulur, üçüncü
 
 ### İmza anahtarı
 
-Ön sürümler ve kararlı sürümler aynı anahtarla imzalanır; bu sayede biri diğerinin üzerine kurulabilir. Anahtar depoya
+Ön sürümler, release sürümleri ve debug APK aynı anahtarla imzalanır; bu sayede biri diğerinin üzerine kurulabilir. Anahtar depoya
 konmaz, **Settings → Secrets and variables → Actions** altına dört gizli değişken olarak eklenir:
 
 | Gizli değişken | İçerik |
@@ -201,9 +202,9 @@ konmaz, **Settings → Secrets and variables → Actions** altına dört gizli d
 Anahtar üretme ve base64'e çevirme:
 
 ```sh
-keytool -genkeypair -v -keystore soundmod.jks -alias soundmod \
+keytool -genkeypair -v -keystore soundtweaks.jks -alias soundtweaks \
   -keyalg RSA -keysize 4096 -validity 10000
-base64 -w0 soundmod.jks    # çıktı SIGNING_KEYSTORE_BASE64 olarak kaydedilir
+base64 -w0 soundtweaks.jks    # çıktı SIGNING_KEYSTORE_BASE64 olarak kaydedilir
 ```
 
 Keystore dosyası ve parolalar yedeklenmelidir; kaybedilirse mevcut kurulumların üzerine güncelleme yapılamaz.
@@ -211,17 +212,17 @@ Keystore dosyası ve parolalar yedeklenmelidir; kaybedilirse mevcut kurulumları
 uyarı verir. Derleme sonunda `apksigner` sertifika özeti günlüğe yazılır; iki sürümün aynı anahtarla imzalandığı bu
 özetle doğrulanabilir.
 
-### Kararlı sürüm çıkarma
+### Sürüm çıkarma
 
 1. `app/build.gradle.kts` içinde `versionName` artırılır ve push edilir.
-2. **Actions → Stable release → Run workflow** çalıştırılır (isteğe bağlı sürüm notu girilebilir).
-3. APK, `v<versionName>` etiketiyle **Releases** sayfasında kararlı sürüm olarak yayımlanır.
+2. **Actions → Release → Run workflow** çalıştırılır (isteğe bağlı sürüm notu girilebilir).
+3. Release ve debug APK'ları `v<versionName>` etiketiyle **Releases** sayfasında birlikte yayımlanır.
 
 ## Proje yapısı
 
 ```
 app/src/main/
-├── kotlin/dev/soundmod/nothing/
+├── kotlin/dev/soundtweaks/nothing/
 │   ├── MainActivity.kt
 │   ├── core/    # katalog, tarayıcı, dönüştürücü, root, depo
 │   ├── hook/    # libxposed giriş sınıfı ve hook'lar
@@ -232,18 +233,18 @@ app/src/main/
 
 ## Bilinen sınırlamalar
 
-- Kamera, video kaydı, NFC, ters şarj ve arama bildirim sesleri SoundMod'un kapsamındaki süreçlerde çalınmaz. Bu
+- Kamera, video kaydı, NFC, ters şarj ve arama bildirim sesleri Sound Tweaks'in kapsamındaki süreçlerde çalınmaz. Bu
   sesler için ilgili uygulamaların Vector kapsamına alınması ve ses dosyalarının uygulama süreçlerine aktarılması
   (Vector uzak dosya desteği) gerekir; henüz uygulanmamıştır.
 - Eski kamera API'sinin `cameraserver` içinde yerel kodla çaldığı deklanşör sesi hook'lanamaz.
 - Kulaklık uyarısı seçeneği kök yöneticisinin `/data/adb/post-fs-data.d` betiklerini çalıştırmasına bağlıdır.
 - Sistem ses kütüphanesi `/<bölüm>/media/audio` dizinlerini kökteki tüm bölümlerde arar; üreticiye özel ses
-  dizinleri bu kalıbın dışındaysa listelenmez. Tanı raporundaki "sound directories" bölümü cihazda nelerin bulunduğunu gösterir.
+  dizinleri bu kalıbın dışındaysa listelenmez. Tanı raporundaki "sound directories" (ses dizinleri) bölümü cihazda nelerin bulunduğunu gösterir.
 - Hook noktaları AOSP sınıf adlarına dayanır; üreticiye özel arayüzlerde sınıf adları farklıysa ilgili hook çalışmaz ve
   durum kartında hata olarak görünür.
 
 ## Lisans
 
-SoundMod, [GNU Genel Kamu Lisansı sürüm 3](LICENSE) (GPL-3.0-or-later) ile lisanslanmıştır. Programı, Özgür Yazılım
+Sound Tweaks, [GNU Genel Kamu Lisansı sürüm 3](LICENSE) (GPL-3.0-or-later) ile lisanslanmıştır. Programı, Özgür Yazılım
 Vakfı'nın yayımladığı GPL'in 3. sürümü ya da (isteğinize bağlı olarak) daha yeni bir sürümü koşullarında yeniden
 dağıtabilir ve değiştirebilirsiniz. Program yararlı olması umuduyla dağıtılır, ancak herhangi bir garanti vermez.

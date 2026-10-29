@@ -1,9 +1,10 @@
-# SoundMod
+# Sound Tweaks
 
 🇬🇧 English · 🇹🇷 [Türkçe](README.tr.md)
 
 An LSPosed/Vector module and management app that changes Android system sounds (keyboard, touch, screenshot,
-lock screen, charging, dock). The UI is written with Material 3 Expressive.
+lock screen, charging, dock). The UI is written with Material 3 Expressive and is available in English and Turkish (it follows the system language by
+default; Settings → Appearance → Language can force either). The package name is `com.mrraita.soundtwks`.
 
 No system files are modified. The chosen sounds are kept in a separate store and only the sound path is redirected
 inside the relevant system processes; when the module is disabled or the sounds are reset, the system returns to its
@@ -56,7 +57,7 @@ Development and test environment: Nothing Phone (4a), Nothing OS 4.1, Android 16
 
 1. Download the APK from the repository's **Releases** page (or from the **Actions** output) and install it.
 2. Open the app and grant root access.
-3. Enable SoundMod in the Vector manager. **System Framework** and **System UI** must be selected in its scope.
+3. Enable Sound Tweaks in the Vector manager. **System Framework** and **System UI** must be selected in its scope.
 4. Reboot the device.
 5. In the app, the Vector card on the **Settings** tab should show that the hooks are active.
 
@@ -74,7 +75,7 @@ Development and test environment: Nothing Phone (4a), Nothing OS 4.1, Android 16
 
 ### Sound store
 
-The chosen sounds are written under `/data/system/soundmod` through root and labeled with the world-readable
+The chosen sounds are written under `/data/system/soundtweaks` through root and labeled with the world-readable
 `system_file` SELinux context. Directories are mode 755 and files are mode 644 (never executable).
 
 - `override/<StockName>.<extension>`: files the hooks redirect to
@@ -94,7 +95,7 @@ are simplified.
 ### Hooks
 
 Written against libxposed API 101 (`minApiVersion = targetApiVersion = 101`). The entry class is
-`dev.soundmod.nothing.hook.SoundModule`; the metadata lives under `app/src/main/resources/META-INF/xposed/`.
+`com.mrraita.soundtwks.hook.SoundTweaksModule`; the metadata lives under `app/src/main/resources/META-INF/xposed/`.
 
 | Process | Class / method | Purpose |
 |---|---|---|
@@ -103,7 +104,7 @@ Written against libxposed API 101 (`minApiVersion = targetApiVersion = 101`). Th
 | SystemUI | `KeyguardViewMediator.playSounds`, `playTrustedSound` | Plays lock sounds, only in "force play" mode |
 
 On the Vector card the "Framework" row shows Vector's own API version and the "Module API" row shows the API
-SoundMod was built against (101); it is normal for them to differ. Every hook sits in its own `try/catch`; on failure
+Sound Tweaks was built against (101); it is normal for them to differ. Every hook sits in its own `try/catch`; on failure
 the stock behavior continues. Lock sounds play through the stock mechanism by default: the system loads the path in
 the `lock_sound`, `unlock_sound` and `trusted_sound` settings once when SystemUI starts. While "force play" mode is off,
 no hook is added to SystemUI.
@@ -111,11 +112,11 @@ no hook is added to SystemUI.
 ### Headphone volume warning
 
 After a reboot, Android shows a warning when headphone volume is raised above a certain level. Three system
-properties read at boot control that warning. When the option is turned on, SoundMod:
+properties read at boot control that warning. When the option is turned on, Sound Tweaks:
 
-- writes the `/data/adb/soundmod/hp_warning.sh` script, which sets `audio.safemedia.bypass=true`,
+- writes the `/data/adb/soundtweaks/hp_warning.sh` script, which sets `audio.safemedia.bypass=true`,
   `audio.safemedia.force=false` and `audio.safemedia.csd.force=false` (with `resetprop`, or `setprop` if missing);
-- puts a single line that only calls the script into `/data/adb/post-fs-data.d/soundmod_hp_warning.sh`, so that it
+- puts a single line that only calls the script into `/data/adb/post-fs-data.d/soundtweaks_hp_warning.sh`, so that it
   runs before the system starts;
 - also sets the properties once right away, so there is no need to wait for a reboot.
 
@@ -124,7 +125,7 @@ any system process. Turn the option off before uninstalling the app; otherwise t
 To remove it by hand:
 
 ```sh
-su -c "rm -rf /data/adb/soundmod /data/adb/post-fs-data.d/soundmod_hp_warning.sh"
+su -c "rm -rf /data/adb/soundtweaks /data/adb/post-fs-data.d/soundtweaks_hp_warning.sh"
 ```
 
 Note that listening at high volume for a long time can damage your hearing; this option is deliberate and user-enabled.
@@ -146,7 +147,7 @@ decoder is always released even if preparing it fails.
   and only the directory's modification time is queried.
 - Only the methods in the sound flow are removed from compiled code (deoptimized).
 - The headphone warning script runs once at boot, sets three properties and exits.
-- The verbose event log exists only in pre-releases and is off by default; in stable releases that code never runs.
+- The verbose event log exists only in pre-releases and debug builds and is off by default; in release builds that code never runs.
 
 ## Troubleshooting
 
@@ -156,7 +157,7 @@ decoder is always released even if preparing it fails.
 - **The lock sound did not change:** Lock sounds are loaded when SystemUI starts, so SystemUI must be refreshed after
   a change (the app asks).
 - **The Vector card is red:** The module is not enabled or the scope is missing; check the scope and reboot.
-- **Diagnostics:** Settings → Tools → Generate diagnostic report. In pre-releases, while "Verbose event log" is on,
+- **Diagnostics:** Settings → Tools → Generate diagnostic report. In pre-releases and debug builds, while "Verbose event log" is on,
   the last SystemUI event is also written to the report.
 - **The headphone warning still appears:** The root manager may not run `post-fs-data.d` scripts, or the properties
   that the warning reads at boot may be overridden by the vendor; turn the option on, reboot, and check the
@@ -175,14 +176,14 @@ gradle wrapper --gradle-version <version in gradle-wrapper.properties> \
 
 `versionName` is in `app/build.gradle.kts`; `versionCode` comes from the CI run number. If no signing key is provided
 in a local build, the release APK is signed with the debug key. The verbose event log is included in the APK only in
-the CI pre-build (`SOUNDMOD_VERBOSE=true`); it is absent from local and stable builds.
+the CI pre-build (`SOUNDTWEAKS_VERBOSE=true`) and in debug builds; it is absent from release builds.
 
 ## CI/CD
 
 | Workflow | Trigger | Output |
 |---|---|---|
 | `prebuild.yml` (Pre-build) | Every push, PR and manual | A signed APK (artifact, including the verbose event log) and, on the default branch, a pre-release tagged `pre-<run number>` (the last 10 are kept) |
-| `release.yml` (Stable release) | Manual only | A stable release tagged `v<versionName>` (no verbose event log); fails if there is no signing key and stops if that version already exists |
+| `release.yml` (Release) | Manual only | One GitHub release tagged `v<versionName>` with **both** the release APK (`SoundTweaks-<version>.apk`) and the debug APK of the same version (`SoundTweaks-<version>-debug.apk`, with the verbose event log); fails if there is no signing key and stops if that version already exists |
 | `build-apk.yml` | Called by the two above | Shared build and signing steps |
 | `security.yml` (Security and quality scan) | Push, PR, weekly, manual | Android Lint, Semgrep, CodeQL (Java/Kotlin and GitHub Actions, `security-and-quality`), Gitleaks (secrets in the git history and signing key files), zizmor (workflow security), dependency review on PRs |
 | `dependabot.yml` | Weekly | Gradle and GitHub Actions version updates (grouped, with a 7-day cooldown); major bumps of the libxposed API are ignored |
@@ -198,7 +199,7 @@ SHA-256.
 
 ### Signing key
 
-Pre-releases and stable releases are signed with the same key so one can be installed over the other. The key is not
+Pre-releases, releases and the debug APK are signed with the same key so any of them can be installed over another. The key is not
 put in the repository; it is added as four secrets under **Settings → Secrets and variables → Actions**:
 
 | Secret | Content |
@@ -211,9 +212,9 @@ put in the repository; it is added as four secrets under **Settings → Secrets 
 Generating the key and converting it to base64:
 
 ```sh
-keytool -genkeypair -v -keystore soundmod.jks -alias soundmod \
+keytool -genkeypair -v -keystore soundtweaks.jks -alias soundtweaks \
   -keyalg RSA -keysize 4096 -validity 10000
-base64 -w0 soundmod.jks    # save the output as SIGNING_KEYSTORE_BASE64
+base64 -w0 soundtweaks.jks    # save the output as SIGNING_KEYSTORE_BASE64
 ```
 
 Back up the keystore file and the passwords; if they are lost, existing installs cannot be updated.
@@ -221,17 +222,17 @@ If `SIGNING_KEYSTORE_BASE64` is not set, the pre-build is signed with the debug 
 build) and prints a warning. At the end of a build the `apksigner` certificate digest is written to the log; that
 digest can be used to verify two releases were signed with the same key.
 
-### Making a stable release
+### Making a release
 
 1. Bump `versionName` in `app/build.gradle.kts` and push.
-2. Run **Actions → Stable release → Run workflow** (optional release notes can be entered).
-3. The APK is published on the **Releases** page as a stable release tagged `v<versionName>`.
+2. Run **Actions → Release → Run workflow** (optional release notes can be entered).
+3. The release and debug APKs are published together on the **Releases** page, tagged `v<versionName>`.
 
 ## Project structure
 
 ```
 app/src/main/
-├── kotlin/dev/soundmod/nothing/
+├── kotlin/dev/soundtweaks/nothing/
 │   ├── MainActivity.kt
 │   ├── core/    # catalog, scanner, converter, root, store
 │   ├── hook/    # libxposed entry class and hooks
@@ -243,7 +244,7 @@ app/src/main/
 ## Known limitations
 
 - Camera, video recording, NFC, reverse-charging and call notification sounds are not played in processes within
-  SoundMod's scope. Changing them would need the relevant apps to be added to the Vector scope and the sound files to
+  Sound Tweaks's scope. Changing them would need the relevant apps to be added to the Vector scope and the sound files to
   be delivered into those app processes (Vector remote file support); this is not implemented yet.
 - The shutter sound that the old camera API plays in native code inside `cameraserver` cannot be hooked.
 - The headphone warning option depends on the root manager running `/data/adb/post-fs-data.d` scripts.
@@ -252,11 +253,10 @@ app/src/main/
   what exists on a device.
 - The hook points rely on AOSP class names; on vendor skins where the class names differ, the related hook does not
   work and shows up as an error on the status card.
-- The app UI is currently English only.
 
 ## License
 
-SoundMod is licensed under the [GNU General Public License version 3](LICENSE) (GPL-3.0-or-later). You can
+Sound Tweaks is licensed under the [GNU General Public License version 3](LICENSE) (GPL-3.0-or-later). You can
 redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software
 Foundation, either version 3 of the License, or (at your option) any later version. This program is distributed in
 the hope that it will be useful, but WITHOUT ANY WARRANTY.

@@ -1,11 +1,14 @@
-package dev.soundmod.nothing.core
+package com.mrraita.soundtwks.core
 
+import androidx.annotation.StringRes
+import com.mrraita.soundtwks.R
 import java.io.File
 
 data class SystemSound(
     val path: String,
     val name: String,
-    val category: String,
+    /** String resource id of the category name */
+    @StringRes val category: Int,
     val partition: String
 )
 
@@ -47,14 +50,18 @@ object SoundScanner {
                 }
             }
         }
-        return out.sortedWith(compareBy({ it.category }, { it.name.lowercase() }))
+        return out.sortedWith(compareBy({ CATEGORY_ORDER.indexOf(it.category) }, { it.name.lowercase() }))
     }
 
-    private fun categoryOf(f: File): String = when (f.parentFile?.name?.lowercase()) {
-        "ui" -> "UI"
-        "ringtones" -> "Ringtones"
-        "notifications" -> "Notifications"
-        "alarms" -> "Alarms"
-        else -> "Other"
+    private val CATEGORY_ORDER = listOf(
+        R.string.cat_alarms, R.string.cat_notifications, R.string.cat_ringtones, R.string.cat_ui, R.string.cat_other
+    )
+
+    private fun categoryOf(f: File): Int = when (f.parentFile?.name?.lowercase()) {
+        "ui" -> R.string.cat_ui
+        "ringtones" -> R.string.cat_ringtones
+        "notifications" -> R.string.cat_notifications
+        "alarms" -> R.string.cat_alarms
+        else -> R.string.cat_other
     }
 }

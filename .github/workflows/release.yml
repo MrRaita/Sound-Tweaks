@@ -1,7 +1,8 @@
-name: Stable release
+name: Release
 
-# Runs manually only (Actions → Stable release → Run workflow). The version number is
-# versionName in app/build.gradle.kts; the build fails if there is no release key.
+# Runs manually only (Actions → Release → Run workflow). The version number is versionName in
+# app/build.gradle.kts. It builds BOTH the release APK and the debug APK of the same version and attaches both to one
+# GitHub release. The build fails if there is no release signing key.
 on:
   workflow_dispatch:
     inputs:
@@ -18,6 +19,7 @@ jobs:
     uses: ./.github/workflows/build-apk.yml
     with:
       require_signing: true
+      build_debug: true
     secrets:
       SIGNING_KEYSTORE_BASE64: ${{ secrets.SIGNING_KEYSTORE_BASE64 }}
       SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
@@ -32,7 +34,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: SoundMod-apk
+          name: SoundTweaks-apk
           path: dist
 
       - name: Check for a release tag conflict
@@ -45,11 +47,13 @@ jobs:
             exit 1
           fi
 
-      - name: Create the stable release
+      - name: Create the release
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ needs.build.outputs.version }}
           NOTES: ${{ inputs.notes }}
         run: |
-          gh release create "v${VERSION}" dist/SoundMod-*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "SoundMod ${VERSION}" --generate-notes --latest --notes "$NOTES"
+          ASSETS="**Assets:** \`SoundTweaks-${VERSION}.apk\` is the release build (use this one). \`SoundTweaks-${VERSION}-debug.apk\` is the debug build of the same version, with the verbose event log, for bug reports. Both are signed with the same key, so one can be installed over the other."
+          gh release create "v${VERSION}" dist/SoundTweaks-*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Sound Tweaks ${VERSION}" --generate-notes --latest --notes "$ASSETS
+          $NOTES"

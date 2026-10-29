@@ -1,4 +1,7 @@
-package dev.soundmod.nothing.ui
+package com.mrraita.soundtwks.ui
+
+import com.mrraita.soundtwks.R
+import com.mrraita.soundtwks.txt
 
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.Animatable
@@ -40,7 +43,7 @@ val LocalHeaderHeight = compositionLocalOf<() -> Int> { { 0 } }
 /** The "Reduce animations" setting; effect-producing modifiers read it. */
 val LocalReduceMotion = compositionLocalOf { false }
 
-/** Core ikon setinde olmayan duraklat ikonu */
+/** Pause icon (it is not in the core icon set) */
 val PauseIcon: ImageVector by lazy {
     ImageVector.Builder(
         name = "Pause",
@@ -116,7 +119,7 @@ fun PlayPauseButton(playing: Boolean, onClick: () -> Unit) {
         Crossfade(targetState = playing, label = "playpause") { p ->
             Icon(
                 imageVector = if (p) PauseIcon else Icons.Default.PlayArrow,
-                contentDescription = if (p) "Pause" else "Play"
+                contentDescription = if (p) txt(R.string.pause) else txt(R.string.play)
             )
         }
     }

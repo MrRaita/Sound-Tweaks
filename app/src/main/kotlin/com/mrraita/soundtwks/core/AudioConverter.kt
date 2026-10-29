@@ -1,4 +1,7 @@
-package dev.soundmod.nothing.core
+package com.mrraita.soundtwks.core
+
+import com.mrraita.soundtwks.R
+import com.mrraita.soundtwks.txt
 
 import android.content.Context
 import android.media.MediaCodec
@@ -35,9 +38,9 @@ object AudioConverter {
         val limited: Boolean
     ) {
         fun summary(normalized: Boolean): String {
-            if (!normalized) return "Level ${fmt(beforeDb)} dBFS (normalization off)"
-            val change = if (abs(gainDb) < 0.15) "unchanged" else "${fmt(beforeDb)} → ${fmt(afterDb)} dBFS"
-            return "Level $change, peak ${fmt(peakDb)} dB" + if (limited) ", peaks softened" else ""
+            if (!normalized) return txt(R.string.conv_level_off, fmt(beforeDb))
+            val change = if (abs(gainDb) < 0.15) txt(R.string.conv_unchanged) else "${fmt(beforeDb)} → ${fmt(afterDb)} dBFS"
+            return txt(R.string.conv_level, change, fmt(peakDb)) + if (limited) txt(R.string.conv_peaks_softened) else ""
         }
 
         private fun fmt(v: Double) = String.format(java.util.Locale.US, "%.1f", v)
@@ -67,7 +70,7 @@ object AudioConverter {
                     break
                 }
             }
-            val format = fmt ?: throw IllegalArgumentException("No audio track found in the file")
+            val format = fmt ?: throw IllegalArgumentException(txt(R.string.err_no_audio_track))
             ex.selectTrack(track)
 
             sampleRate = format.getInteger(MediaFormat.KEY_SAMPLE_RATE)
@@ -85,7 +88,7 @@ object AudioConverter {
             while (!outputDone) {
                 // A broken file or decoder that never reports end-of-stream must not hang the app
                 if (android.os.SystemClock.elapsedRealtime() > deadline) {
-                    throw IllegalStateException("Decoding timed out")
+                    throw IllegalStateException(txt(R.string.err_decode_timeout))
                 }
                 if (!inputDone) {
                     val idx = dec.dequeueInputBuffer(10_000)
@@ -130,7 +133,7 @@ object AudioConverter {
         val usable = minOf(raw.size.toLong(), maxBytes).toInt() and 1.inv()
         val samples = ShortArray(usable / 2)
         ByteBuffer.wrap(raw, 0, usable).order(ByteOrder.LITTLE_ENDIAN).asShortBuffer().get(samples)
-        require(samples.isNotEmpty()) { "Decoded audio is empty" }
+        require(samples.isNotEmpty()) { txt(R.string.err_decoded_empty) }
 
         val before = meanDb(samples)
         var gainDb = 0.0

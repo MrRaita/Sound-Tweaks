@@ -8,6 +8,10 @@ on:
         description: Fail the build if there is no signing key
         type: boolean
         default: false
+      build_debug:
+        description: Also build the debug APK (it includes the verbose event log)
+        type: boolean
+        default: false
       verbose_log:
         description: Include the verbose event log feature in the build (pre-build only)
         type: boolean
@@ -107,21 +111,29 @@ jobs:
           SIGNING_KEYSTORE_PASSWORD: ${{ secrets.SIGNING_KEYSTORE_PASSWORD }}
           SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
-          SOUNDMOD_VERBOSE: ${{ inputs.verbose_log }}
-        run: ./gradlew assembleRelease --stacktrace
+          SOUNDTWEAKS_VERBOSE: ${{ inputs.verbose_log }}
+          BUILD_DEBUG: ${{ inputs.build_debug }}
+        run: |
+          TASKS="assembleRelease"
+          if [ "$BUILD_DEBUG" = "true" ]; then TASKS="$TASKS assembleDebug"; fi
+          ./gradlew $TASKS --stacktrace
 
-      - name: Name the APK and show its signature
+      - name: Name the APKs and show their signatures
         env:
           VERSION: ${{ steps.meta.outputs.version }}
+          BUILD_DEBUG: ${{ inputs.build_debug }}
         run: |
-          APK=$(ls app/build/outputs/apk/release/*.apk | head -1)
-          cp "$APK" "SoundMod-${VERSION}.apk"
           APKSIGNER="$ANDROID_HOME/build-tools/$(ls "$ANDROID_HOME/build-tools" | sort -V | tail -1)/apksigner"
-          "$APKSIGNER" verify --print-certs "SoundMod-${VERSION}.apk" | grep -i "SHA-256" || true
+          cp "$(ls app/build/outputs/apk/release/*.apk | head -1)" "SoundTweaks-${VERSION}.apk"
+          "$APKSIGNER" verify --print-certs "SoundTweaks-${VERSION}.apk" | grep -i "SHA-256" || true
+          if [ "$BUILD_DEBUG" = "true" ]; then
+            cp "$(ls app/build/outputs/apk/debug/*.apk | head -1)" "SoundTweaks-${VERSION}-debug.apk"
+            "$APKSIGNER" verify --print-certs "SoundTweaks-${VERSION}-debug.apk" | grep -i "SHA-256" || true
+          fi
 
-      - name: Upload the APK
+      - name: Upload the APKs
         uses: actions/upload-artifact@v7
         with:
-          name: SoundMod-apk
-          path: SoundMod-*.apk
+          name: SoundTweaks-apk
+          path: SoundTweaks-*.apk
           if-no-files-found: error

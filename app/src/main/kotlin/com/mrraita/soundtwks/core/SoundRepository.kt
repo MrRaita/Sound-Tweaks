@@ -1,4 +1,7 @@
-package dev.soundmod.nothing.core
+package com.mrraita.soundtwks.core
+
+import com.mrraita.soundtwks.R
+import com.mrraita.soundtwks.txt
 
 import android.content.Context
 import android.net.Uri
@@ -11,7 +14,7 @@ data class ApplyInfo(val stats: AudioConverter.Stats?, val normalized: Boolean) 
 
 /** Deploys sound files through root and manages Settings.Global paths. */
 class SoundRepository(private val ctx: Context) {
-    private val prefs = ctx.getSharedPreferences("soundmod", Context.MODE_PRIVATE)
+    private val prefs = ctx.getSharedPreferences("soundtweaks", Context.MODE_PRIVATE)
     private val srcDir = File(ctx.filesDir, "src")
     private val previewDir = File(ctx.filesDir, "preview")
 
@@ -55,9 +58,7 @@ class SoundRepository(private val ctx: Context) {
     private fun ensureStore(): Root.Result {
         val b = Root.q(SoundPaths.BASE)
         val r = Root.run(
-            "mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && " +
-                "chown -R system:system $b && ${SoundPaths.storePermsCmd(SoundPaths.BASE)} && " +
-                "(chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b)"
+            "mkdir -p ${Root.q(SoundPaths.OVERRIDE_DIR)} ${Root.q(SoundPaths.FILES_DIR)} && chown -R system:system $b && ${SoundPaths.storePermsCmd(SoundPaths.BASE)} && (chcon -R ${SoundPaths.CONTEXT} $b || restorecon -R $b)"
         )
         if (r.ok) storeReady = true
         return r
@@ -72,26 +73,16 @@ class SoundRepository(private val ctx: Context) {
     }
 
     /**
-     * Turns the headphone volume warning off/on: writes a tiny script under /data/adb/soundmod that sets only three
+     * Turns the headphone volume warning off/on: writes a tiny script under /data/adb/soundtweaks that sets only three
      * system properties at boot and is called from post-fs-data.d. No hook is installed. When enabled the properties
      * are also set immediately; when disabled the script is deleted and stock behavior returns on the next boot.
      */
     fun setNoHpWarning(on: Boolean): Root.Result {
         if (!on) return Root.run("rm -f ${Root.q(SoundPaths.HP_LAUNCHER)} ${Root.q(SoundPaths.HP_SCRIPT)}; rmdir ${Root.q(SoundPaths.HP_DIR)} 2>/dev/null; true")
-        val script = "#!/system/bin/sh\n" +
-            "# SoundMod: disables the headphone high-volume warning (runs at boot)\n" +
-            "P=setprop\n" +
-            "command -v resetprop >/dev/null 2>&1 && P=resetprop\n" +
-            "\$P audio.safemedia.bypass true\n" +
-            "\$P audio.safemedia.force false\n" +
-            "\$P audio.safemedia.csd.force false\n"
+        val script = "#!/system/bin/sh\n# Sound Tweaks: disables the headphone high-volume warning (runs at boot)\nP=setprop\ncommand -v resetprop >/dev/null 2>&1 && P=resetprop\n\$P audio.safemedia.bypass true\n\$P audio.safemedia.force false\n\$P audio.safemedia.csd.force false\n"
         val launcher = "#!/system/bin/sh\n[ -f ${SoundPaths.HP_SCRIPT} ] && sh ${SoundPaths.HP_SCRIPT}\n"
         return Root.run(
-            "mkdir -p ${Root.q(SoundPaths.HP_DIR)} /data/adb/post-fs-data.d && " +
-                "printf '%b' ${Root.q(script)} > ${Root.q(SoundPaths.HP_SCRIPT)} && " +
-                "printf '%b' ${Root.q(launcher)} > ${Root.q(SoundPaths.HP_LAUNCHER)} && " +
-                "chmod 755 ${Root.q(SoundPaths.HP_SCRIPT)} ${Root.q(SoundPaths.HP_LAUNCHER)} && " +
-                "sh ${Root.q(SoundPaths.HP_SCRIPT)}"
+            "mkdir -p ${Root.q(SoundPaths.HP_DIR)} /data/adb/post-fs-data.d && printf '%b' ${Root.q(script)} > ${Root.q(SoundPaths.HP_SCRIPT)} && printf '%b' ${Root.q(launcher)} > ${Root.q(SoundPaths.HP_LAUNCHER)} && chmod 755 ${Root.q(SoundPaths.HP_SCRIPT)} ${Root.q(SoundPaths.HP_LAUNCHER)} && sh ${Root.q(SoundPaths.HP_SCRIPT)}"
         )
     }
 
@@ -118,7 +109,7 @@ class SoundRepository(private val ctx: Context) {
     // ---- Applying ----
 
     fun applySystem(slot: SoundSlot, sound: SystemSound, opt: AudioConverter.Options): Result<ApplyInfo> =
-        applyFrom(slot, File(sound.path), "System: ${sound.name}", opt)
+        applyFrom(slot, File(sound.path), "sys:${sound.name}", opt)
 
     fun applyCustom(slot: SoundSlot, uri: Uri, displayName: String, opt: AudioConverter.Options): Result<ApplyInfo> {
         return try {
@@ -129,8 +120,8 @@ class SoundRepository(private val ctx: Context) {
             val copy = File(srcDir, "${slot.id}.$ext")
             ctx.contentResolver.openInputStream(uri)?.use { input ->
                 copy.outputStream().use { input.copyTo(it) }
-            } ?: return Result.failure(IllegalStateException("Could not open the file"))
-            applyFrom(slot, copy, "File: $displayName", opt)
+            } ?: return Result.failure(IllegalStateException(txt(R.string.err_open_file)))
+            applyFrom(slot, copy, "file:$displayName", opt)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -144,7 +135,7 @@ class SoundRepository(private val ctx: Context) {
             AudioConverter.writeSilence(wav)
             val r = deploy(slot, wav, "wav", direct = false)
             if (r.isFailure) return Result.failure(r.exceptionOrNull()!!)
-            remember(slot, "Silent", wav.absolutePath, wav.absolutePath)
+            remember(slot, "silent", wav.absolutePath, wav.absolutePath)
             Result.success(ApplyInfo(null, false))
         } catch (e: Exception) {
             Result.failure(e)
@@ -153,9 +144,9 @@ class SoundRepository(private val ctx: Context) {
 
     /** Re-applies the saved source with the current normalization settings */
     fun reprocess(slot: SoundSlot, opt: AudioConverter.Options): Result<ApplyInfo> {
-        val label = label(slot) ?: return Result.failure(IllegalStateException("No custom sound"))
+        val label = label(slot) ?: return Result.failure(IllegalStateException(txt(R.string.err_no_custom)))
         val src = prefs.getString("srcpath_${slot.id}", null)?.let { File(it) }
-        if (src == null || !src.isFile) return Result.failure(IllegalStateException("Source file is missing"))
+        if (src == null || !src.isFile) return Result.failure(IllegalStateException(txt(R.string.err_source_missing)))
         return applyFrom(slot, src, label, opt)
     }
 
@@ -239,20 +230,18 @@ class SoundRepository(private val ctx: Context) {
     private fun deploy(slot: SoundSlot, src: File, ext: String, direct: Boolean): Result<Unit> {
         if (!storeReady) {
             val st = ensureStore()
-            if (!st.ok) return Result.failure(IllegalStateException("Could not prepare the sound store: ${st.out}"))
+            if (!st.ok) return Result.failure(IllegalStateException(txt(R.string.err_prepare_store, st.out)))
         }
 
         val fix = { dest: String ->
-            "chown system:system ${Root.q(dest)} && chmod 644 ${Root.q(dest)} && " +
-                "(chcon ${SoundPaths.CONTEXT} ${Root.q(dest)} || restorecon ${Root.q(dest)})"
+            "chown system:system ${Root.q(dest)} && chmod 644 ${Root.q(dest)} && (chcon ${SoundPaths.CONTEXT} ${Root.q(dest)} || restorecon ${Root.q(dest)})"
         }
 
         val r = when (slot.type) {
             SlotType.HOOK_FILE -> {
                 val dest = "${SoundPaths.OVERRIDE_DIR}/${slot.key}.$ext"
                 Root.run(
-                    "rm -f ${Root.q(SoundPaths.OVERRIDE_DIR)}/${slot.key}.*; " +
-                        "cp ${Root.q(src.absolutePath)} ${Root.q(dest)} && ${fix(dest)}"
+                    "rm -f ${Root.q(SoundPaths.OVERRIDE_DIR)}/${slot.key}.*; cp ${Root.q(src.absolutePath)} ${Root.q(dest)} && ${fix(dest)}"
                 )
             }
             SlotType.SETTINGS_GLOBAL -> {
@@ -262,14 +251,12 @@ class SoundRepository(private val ctx: Context) {
                 } else {
                     val dest = "${SoundPaths.FILES_DIR}/${slot.key}.$ext"
                     Root.run(
-                        "rm -f ${Root.q(SoundPaths.FILES_DIR)}/${slot.key}.*; " +
-                            "cp ${Root.q(src.absolutePath)} ${Root.q(dest)} && ${fix(dest)} && " +
-                            "settings put global ${slot.key} ${Root.q(dest)}"
+                        "rm -f ${Root.q(SoundPaths.FILES_DIR)}/${slot.key}.*; cp ${Root.q(src.absolutePath)} ${Root.q(dest)} && ${fix(dest)} && settings put global ${slot.key} ${Root.q(dest)}"
                     )
                 }
             }
         }
-        if (!r.ok) return Result.failure(IllegalStateException(r.out.ifBlank { "Command failed (${r.code})" }))
+        if (!r.ok) return Result.failure(IllegalStateException(r.out.ifBlank { txt(R.string.err_command_failed, r.code) }))
         return Result.success(Unit)
     }
 

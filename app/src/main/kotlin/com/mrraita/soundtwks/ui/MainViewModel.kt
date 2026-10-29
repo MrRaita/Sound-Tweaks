@@ -1,4 +1,9 @@
-package dev.soundmod.nothing.ui
+package com.mrraita.soundtwks.ui
+
+import com.mrraita.soundtwks.R
+import com.mrraita.soundtwks.core.AppLocale
+import com.mrraita.soundtwks.txt
+import com.mrraita.soundtwks.AppStrings
 
 import android.app.Application
 import android.content.BroadcastReceiver
@@ -18,16 +23,16 @@ import android.provider.Settings
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import dev.soundmod.nothing.core.ApplyInfo
-import dev.soundmod.nothing.core.AudioConverter
-import dev.soundmod.nothing.core.Root
-import dev.soundmod.nothing.core.RootInfo
-import dev.soundmod.nothing.core.SoundCatalog
-import dev.soundmod.nothing.core.SoundPaths
-import dev.soundmod.nothing.core.SoundRepository
-import dev.soundmod.nothing.core.SoundScanner
-import dev.soundmod.nothing.core.SoundSlot
-import dev.soundmod.nothing.core.SystemSound
+import com.mrraita.soundtwks.core.ApplyInfo
+import com.mrraita.soundtwks.core.AudioConverter
+import com.mrraita.soundtwks.core.Root
+import com.mrraita.soundtwks.core.RootInfo
+import com.mrraita.soundtwks.core.SoundCatalog
+import com.mrraita.soundtwks.core.SoundPaths
+import com.mrraita.soundtwks.core.SoundRepository
+import com.mrraita.soundtwks.core.SoundScanner
+import com.mrraita.soundtwks.core.SoundSlot
+import com.mrraita.soundtwks.core.SystemSound
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
@@ -52,7 +57,8 @@ data class SysState(
     val touchSounds: Boolean = true,
     val lockSounds: Boolean = true,
     val chargingSounds: Boolean = true,
-    val ringer: String = "",
+    /** AudioManager.RINGER_MODE_* value (-1 = unknown) */
+    val ringer: Int = -1,
     val systemMuted: Boolean = false,
     val systemVol: Int = 0,
     val systemMax: Int = 0,
@@ -74,6 +80,8 @@ data class UiState(
     val normalize: Boolean = true,
     val targetDb: Int = -30,
     val themeMode: Int = 0,
+    /** App language: "system", "en" or "tr" */
+    val language: String = AppLocale.SYSTEM,
     val oled: Boolean = false,
     val dynamicColor: Boolean = true,
     val palette: Int = 0,
@@ -99,7 +107,7 @@ data class RestartPrompt(val title: String, val text: String)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = SoundRepository(app)
-    private val prefs = app.getSharedPreferences("soundmod_ui", Context.MODE_PRIVATE)
+    private val prefs = app.getSharedPreferences("soundtweaks_ui", Context.MODE_PRIVATE)
 
     init {
         // Version 0.5: the lock slots went back to the stock mechanism (Settings path); forget the old records
@@ -115,6 +123,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             reduceMotion = prefs.getBoolean("reduce_motion", false),
             normalize = prefs.getBoolean("normalize", true),
             targetDb = prefs.getInt("target_db", -30),
+            language = AppLocale.saved(app),
             themeMode = prefs.getInt("theme_mode", 0).let { if (it == 3) 2 else it },
             oled = prefs.getBoolean("oled", prefs.getInt("theme_mode", 0) == 3),
             dynamicColor = prefs.getBoolean("dynamic", true),
@@ -271,7 +280,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(skipRestartWarning = v) }
     }
 
-    // ---- Genel durum ----
+    // ---- General state ----
 
     fun refreshAll() {
         viewModelScope.launch(Dispatchers.IO) {
@@ -303,11 +312,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 touchSounds = Settings.System.getInt(cr, Settings.System.SOUND_EFFECTS_ENABLED, 1) == 1,
                 lockSounds = Settings.System.getInt(cr, "lockscreen_sounds_enabled", 1) == 1,
                 chargingSounds = Settings.Global.getInt(cr, "charging_sounds_enabled", 1) == 1,
-                ringer = when (am.ringerMode) {
-                    AudioManager.RINGER_MODE_NORMAL -> "Normal"
-                    AudioManager.RINGER_MODE_VIBRATE -> "Vibrate"
-                    else -> "Silent"
-                },
+                ringer = am.ringerMode,
                 systemMuted = am.isStreamMute(AudioManager.STREAM_SYSTEM),
                 systemVol = am.getStreamVolume(AudioManager.STREAM_SYSTEM),
                 systemMax = am.getStreamMaxVolume(AudioManager.STREAM_SYSTEM),
@@ -361,6 +366,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(targetDb = c) }
     }
 
+    /** Saves the language and refreshes the string source; the caller recreates the activity afterwards. */
+    fun setLanguage(lang: String) {
+        AppLocale.save(app(), lang)
+        AppStrings.refresh(app())
+        _state.update { it.copy(language = lang) }
+    }
+
     fun setOled(v: Boolean) {
         prefs.edit().putBoolean("oled", v).apply()
         _state.update { it.copy(oled = v) }
@@ -389,7 +401,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             SysToggle.CHARGING -> "settings put global charging_sounds_enabled $v"
         }
         val r = Root.run(cmd)
-        if (!r.ok) msg("Could not change the setting: ${r.out}")
+        if (!r.ok) msg(txt(R.string.msg_setting_failed, r.out))
         _state.update { it.copy(sys = readSys()) }
     }
 
@@ -397,39 +409,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun applySystem(slot: SoundSlot, sound: SystemSound) = work {
         repo.applySystem(slot, sound, optsFor(slot)).fold(
-            onSuccess = { afterChange(slot, "“${slot.title}” → ${sound.name}", it) },
-            onFailure = { msg("Error: ${it.message}") }
+            onSuccess = { afterChange(slot, txt(R.string.msg_applied_system, txt(slot.titleRes), sound.name), it) },
+            onFailure = { msg(txt(R.string.msg_error, it.message ?: "")) }
         )
     }
 
     fun applyCustom(slot: SoundSlot, uri: Uri) = work {
         val name = displayName(uri)
         repo.applyCustom(slot, uri, name, optsFor(slot)).fold(
-            onSuccess = { afterChange(slot, "“${slot.title}” → $name", it) },
-            onFailure = { msg("Error: ${it.message}") }
+            onSuccess = { afterChange(slot, txt(R.string.msg_applied_system, txt(slot.titleRes), name), it) },
+            onFailure = { msg(txt(R.string.msg_error, it.message ?: "")) }
         )
     }
 
     /** Mutes the selected sound (short silent file). */
     fun applySilent(slot: SoundSlot) = work {
         repo.applySilence(slot).fold(
-            onSuccess = { afterChange(slot, "“${slot.title}” susturuldu", it) },
-            onFailure = { msg("Error: ${it.message}") }
+            onSuccess = { afterChange(slot, txt(R.string.msg_muted, txt(slot.titleRes)), it) },
+            onFailure = { msg(txt(R.string.msg_error, it.message ?: "")) }
         )
     }
 
     /** Reprocesses a single sound with its own normalization choice. */
     fun reapplySlot(slot: SoundSlot) = work {
         repo.reprocess(slot, optsFor(slot)).fold(
-            onSuccess = { afterChange(slot, "“${slot.title}” reprocessed", it) },
-            onFailure = { msg("Error: ${it.message}") }
+            onSuccess = { afterChange(slot, txt(R.string.msg_reprocessed, txt(slot.titleRes)), it) },
+            onFailure = { msg(txt(R.string.msg_error, it.message ?: "")) }
         )
     }
 
     fun reset(slot: SoundSlot) = work {
         repo.reset(slot).fold(
-            onSuccess = { afterChange(slot, "“${slot.title}” reset to default", null) },
-            onFailure = { msg("Error: ${it.message}") }
+            onSuccess = { afterChange(slot, txt(R.string.msg_reset, txt(slot.titleRes)), null) },
+            onFailure = { msg(txt(R.string.msg_error, it.message ?: "")) }
         )
     }
 
@@ -457,9 +469,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         if (needSysUi && !_state.value.forceLock) askSysUiReload()
         _state.update { it.copy(slots = readSlots()) }
         val text = if (ok == 0 && fail == 0) {
-            "No selected sounds to reprocess"
+            txt(R.string.msg_none_to_reprocess)
         } else {
-            "$ok sounds reprocessed" + (if (fail > 0) ", $fail failed" else "") +
+            txt(R.string.msg_n_reprocessed, ok) + (if (fail > 0) txt(R.string.msg_n_failed, fail) else "") +
                 (if (ok == 1 && lastSummary.isNotBlank()) " · $lastSummary" else "")
         }
         msg(text)
@@ -475,7 +487,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     private fun work(block: () -> Unit) {
         if (_state.value.root != RootState.GRANTED) {
-            msg("Root access is required first (Settings tab)")
+            msg(txt(R.string.msg_root_first))
             return
         }
         _state.update { it.copy(busy = true) }
@@ -504,7 +516,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             AudioManager::class.java.getMethod("unloadSoundEffects").invoke(am)
             AudioManager::class.java.getMethod("loadSoundEffects").invoke(am)
         } catch (e: Exception) {
-            msg("Could not reload the sounds; a reboot may be needed for the change to apply")
+            msg(txt(R.string.msg_reload_failed))
         }
     }
 
@@ -519,7 +531,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             }
             val path = repo.previewPath(slot) ?: repo.stockPath(slot, libraryNow())
             if (path == null) {
-                msg("No preview file found for this sound")
+                msg(txt(R.string.msg_no_preview))
                 return@launch
             }
             withContext(Dispatchers.Main) { toggle(key, path) }
@@ -568,7 +580,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             np.setOnCompletionListener { finishPlayback(key) }
             np.setOnErrorListener { _, _, _ ->
                 release()
-                msg("Could not play")
+                msg(txt(R.string.msg_cannot_play))
                 true
             }
             mp = np
@@ -577,7 +589,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             np.prepareAsync()
         } catch (e: Exception) {
             release()
-            msg("Could not play: ${e.message}")
+            msg(txt(R.string.msg_cannot_play_why, e.message ?: ""))
         }
     }
 
@@ -616,9 +628,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         try {
             val am = app().getSystemService(Context.AUDIO_SERVICE) as AudioManager
             am.playSoundEffect(fx)
-            if (!_state.value.sys.touchSounds) msg("Touch sounds are off; you can turn them on in the Settings tab")
+            if (!_state.value.sys.touchSounds) msg(txt(R.string.msg_touch_off))
         } catch (e: Exception) {
-            msg("Test failed: ${e.message}")
+            msg(txt(R.string.msg_test_failed, e.message ?: ""))
         }
     }
 
@@ -626,12 +638,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun restartSysUiNow() = work {
         val r = repo.restartSystemUi()
-        msg(if (r.ok) "SystemUI restarted" else "Could not restart SystemUI: ${r.out.ifBlank { "code ${r.code}" }}")
+        msg(if (r.ok) txt(R.string.msg_systemui_restarted) else txt(R.string.msg_systemui_failed, r.out.ifBlank { "code ${r.code}" }))
     }
 
     fun buildReport() = work {
-        val keys = "lock_sound unlock_sound trusted_sound low_battery_sound charging_started_sound " +
-            "wireless_charging_started_sound desk_dock_sound car_dock_sound"
+        val keys = "lock_sound unlock_sound trusted_sound low_battery_sound charging_started_sound wireless_charging_started_sound desk_dock_sound car_dock_sound"
         val cmd = """
             echo "== build =="; getprop ro.build.display.id
             echo "== store =="; ls -laZ ${SoundPaths.BASE} ${SoundPaths.OVERRIDE_DIR} ${SoundPaths.FILES_DIR} 2>&1
@@ -663,18 +674,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             echo "== done =="
         """.trimIndent()
         val r = Root.run(cmd)
-        _state.update { it.copy(report = r.out.ifBlank { "Report is empty (code ${r.code})" }) }
+        _state.update { it.copy(report = r.out.ifBlank { txt(R.string.msg_report_empty, r.code) }) }
     }
 
     private fun askSysUiReload() {
         _state.update {
             it.copy(
                 restartPrompt = RestartPrompt(
-                    "Refresh SystemUI?",
-                    "The lock, unlock and trusted-device sounds are loaded once when SystemUI starts. " +
-                        "SystemUI can be restarted so the new sound takes effect right away. The screen redraws " +
-                        "for a few seconds; open apps are not closed. You can also refresh it later " +
-                        "(Settings → Advanced)."
+                    txt(R.string.prompt_refresh_title),
+                    txt(R.string.prompt_refresh_body)
                 )
             )
         }
@@ -684,21 +692,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setForceLock(on: Boolean) = work {
         val r = repo.setForceLock(on)
         if (!r.ok) {
-            msg("Could not change the setting: ${r.out}")
+            msg(txt(R.string.msg_setting_failed, r.out))
         } else {
             _state.update { it.copy(forceLock = on) }
             if (on) {
                 _state.update {
                     it.copy(
                         restartPrompt = RestartPrompt(
-                            "Refresh for force play",
-                            "Force play is set up when SystemUI starts. Restart SystemUI now so it takes effect? " +
-                                "The screen redraws for a few seconds; open apps are not closed."
+                            txt(R.string.prompt_force_title),
+                            txt(R.string.prompt_force_body)
                         )
                     )
                 }
             } else {
-                msg("Force play turned off; the stock lock sound mechanism will be used")
+                msg(txt(R.string.msg_force_off))
             }
         }
     }
@@ -708,9 +715,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         val r = repo.setNoHpWarning(on)
         if (r.ok) {
             _state.update { it.copy(noHpWarning = on) }
-            msg(if (on) "Headphone volume warning turned off" else "Script removed; the warning returns on the next boot")
+            msg(if (on) txt(R.string.msg_hp_off) else txt(R.string.msg_hp_on))
         } else {
-            msg("Could not change the setting: ${r.out}")
+            msg(txt(R.string.msg_setting_failed, r.out))
         }
     }
 
@@ -734,7 +741,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun setDebugLog(on: Boolean) = work {
         val r = repo.setDebug(on)
-        if (r.ok) _state.update { it.copy(debugLog = on) } else msg("Could not change the setting: ${r.out}")
+        if (r.ok) _state.update { it.copy(debugLog = on) } else msg(txt(R.string.msg_setting_failed, r.out))
     }
 
     fun clearReport() {

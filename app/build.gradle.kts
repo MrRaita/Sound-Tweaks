@@ -4,19 +4,17 @@ plugins {
 }
 
 android {
-    namespace = "dev.soundmod.nothing"
+    namespace = "com.mrraita.soundtwks"
     compileSdk = 37
 
     defaultConfig {
-        applicationId = "dev.soundmod.nothing"
+        applicationId = "com.mrraita.soundtwks"
         // The LSPosed/Vector base is Android 8.1 (API 27); we require Android 9+
         minSdk = 28
         targetSdk = 36
         // Uses the CI run number so it increases with every build
         versionCode = (System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1)
-        versionName = "0.12.0"
-        // The verbose event log exists only in the pre-build (SOUNDMOD_VERBOSE=true); not in stable or local builds
-        buildConfigField("boolean", "VERBOSE_LOG", (System.getenv("SOUNDMOD_VERBOSE") == "true").toString())
+        versionName = "0.13.0"
     }
 
     // Release signing: pre-builds and stable releases are signed with the same key. The key is supplied in CI through
@@ -43,6 +41,14 @@ android {
             // Shrinking is off so R8 does not break the hook classes
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName(if (releaseKeystore != null) "release" else "debug")
+            // The verbose event log is in a release build only for the CI pre-build (SOUNDTWEAKS_VERBOSE=true)
+            buildConfigField("boolean", "VERBOSE_LOG", (System.getenv("SOUNDTWEAKS_VERBOSE") == "true").toString())
+        }
+        debug {
+            // Debug builds always include the verbose event log. In CI they are signed with the release key too,
+            // so a debug build can be installed over a release build (and back) without uninstalling.
+            buildConfigField("boolean", "VERBOSE_LOG", "true")
+            if (releaseKeystore != null) signingConfig = signingConfigs.getByName("release")
         }
     }
 

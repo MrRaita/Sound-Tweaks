@@ -14,5 +14,5 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "SoundMod"
+rootProject.name = "SoundTweaks"
 include(":app")

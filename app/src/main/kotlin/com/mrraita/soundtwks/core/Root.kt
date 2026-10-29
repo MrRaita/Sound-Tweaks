@@ -1,4 +1,4 @@
-package dev.soundmod.nothing.core
+package com.mrraita.soundtwks.core
 
 /** Minimal root runner: `su -c <command>` with a timeout and an output cap. */
 object Root {

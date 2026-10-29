@@ -1,5 +1,6 @@
-package dev.soundmod.nothing
+package com.mrraita.soundtwks
 
+import android.content.Context
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -14,14 +15,20 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import dev.soundmod.nothing.core.SoundSlot
-import dev.soundmod.nothing.ui.MainViewModel
-import dev.soundmod.nothing.ui.SoundModScreen
-import dev.soundmod.nothing.ui.SoundModTheme
-import dev.soundmod.nothing.ui.UiActions
+import com.mrraita.soundtwks.core.AppLocale
+import com.mrraita.soundtwks.core.SoundSlot
+import com.mrraita.soundtwks.ui.MainViewModel
+import com.mrraita.soundtwks.ui.SoundTweaksScreen
+import com.mrraita.soundtwks.ui.SoundTweaksTheme
+import com.mrraita.soundtwks.ui.UiActions
 
 class MainActivity : ComponentActivity() {
     private val vm: MainViewModel by viewModels()
+
+    // Apply the saved in-app language (or follow the system) before any resource is read
+    override fun attachBaseContext(newBase: Context) {
+        super.attachBaseContext(AppLocale.wrap(newBase))
+    }
 
     override fun onStart() {
         super.onStart()
@@ -35,6 +42,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        AppStrings.refresh(this)
         enableEdgeToEdge()
         setContent {
             val state by vm.state.collectAsStateWithLifecycle()
@@ -72,6 +80,10 @@ class MainActivity : ComponentActivity() {
                     setTargetDb = vm::setTargetDb,
                     reapplyAll = vm::reapplyAll,
                     setThemeMode = vm::setThemeMode,
+                    setLanguage = { lang ->
+                        vm.setLanguage(lang)
+                        recreate()
+                    },
                     setOled = vm::setOled,
                     setDynamic = vm::setDynamic,
                     setPalette = vm::setPalette,
@@ -96,14 +108,14 @@ class MainActivity : ComponentActivity() {
                 )
             }
 
-            SoundModTheme(
+            SoundTweaksTheme(
                 themeMode = state.themeMode,
                 oled = state.oled,
                 dynamic = state.dynamicColor,
                 palette = state.palette,
                 reduceMotion = state.reduceMotion
             ) {
-                SoundModScreen(state = state, player = player, snackbar = snackbar, a = actions)
+                SoundTweaksScreen(state = state, player = player, snackbar = snackbar, a = actions)
             }
         }
     }

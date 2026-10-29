@@ -37,7 +37,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v8
         with:
-          name: SoundMod-apk
+          name: SoundTweaks-apk
           path: dist
 
       - name: Create the pre-release
@@ -48,7 +48,7 @@ jobs:
           SIGNED: ${{ needs.build.outputs.signed }}
         run: |
           if [ "$SIGNED" = "true" ]; then SIG="release key"; else SIG="debug key (no release key is configured)"; fi
-          gh release create "$TAG" dist/SoundMod-*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+          gh release create "$TAG" dist/SoundTweaks-*.apk --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
             --title "$TITLE" --prerelease \
             --notes "$(printf 'Automatic pre-build. Not a stable release.\nCommit: %s\nSignature: %s' "$GITHUB_SHA" "$SIG")"
 
