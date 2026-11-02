@@ -5,8 +5,7 @@
 > Bu belge İngilizce README'nin Türkçe çevirisidir; farklılık varsa İngilizce olan geçerlidir.
 
 Android sistem seslerini (klavye, dokunma, ekran görüntüsü, kilit ekranı, şarj, dock) değiştirmeye yarayan,
-LSPosed/Vector modülü ve yönetim uygulaması. Arayüz Material 3 Expressive ile yazılmıştır; İngilizce ve Türkçe desteklenir (varsayılan olarak sistem dilini izler,
-Ayarlar → Görünüm → Dil ile biri zorlanabilir). Paket adı `com.mrraita.soundtwks`.
+LSPosed modülü.
 
 Sistem dosyaları değiştirilmez. Seçilen sesler ayrı bir depoda tutulur ve ilgili sistem süreçlerinde yalnızca
 ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler sıfırlandığında sistem kendi varsayılanlarına döner.
@@ -15,18 +14,11 @@ ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler s
 
 - Sesleri dosya yolundan değil, uygulama içinden seçme: sistem seslerinden, kullanıcının kendi dosyasından ya da
   susturarak.
-- Sistem ses dizinlerinin taranıp listelendiği, dinlenebilen kütüphane (çal/duraklat, süreye bağlı dalgalı ilerleme çubuğu).
+- Sistem ses dizinlerinin taranıp listelendiği, dinlenebilen kütüphane.
 - Her ses için ayrı normalize ayarı (genel, kapalı ya da özel hedef seviye); tepeler yumuşak limiter ile sınırlanır.
 - Dokunma, kilit ekranı ve şarj sesleri için sistem anahtarlarının durumunu gösterme ve değiştirme (zil modu ile ses
   seviyeleri dahil).
 - İsteğe bağlı "zorla çal" modu: kilit sesleri sessiz/titreşim modunda da duyulacak şekilde medya ses akışından çalınır.
-- Sistem Arayüzünü yeniden başlatma düğmesi (ilk kullanımda uyarı gösterir, uyarı kapatılabilir).
-- Tema: sistem, açık, koyu; ayrı bir OLED (saf siyah) anahtarı, koyu temanın (sistem koyuya geçince de) siyah
-  olmasını sağlar. Material You renkleri ya da 12 hazır palet.
-- Yüzen alt gezinti çubuğu, iki genişlikte (geniş: seçili sekme simge ve yazıyla genişleyen hap; kompakt: yalnızca
-  simgeler ve kayan vurgu), sekme sırasını sürükle-bırak ile değiştirme ve sekmeleri gizleme.
-- Üst başlık aşağı kaydırınca daralır, uygulama adının yerine sekme adı geçer; başlık listenin üstüne biner, köşelerin
-  ardında liste görünür. Kütüphane sekmesinde arama satırı ve filtre çipleri başlığa bağlıdır, başlıkla birlikte yukarı kayar.
 - Kulaklıkta çıkan yüksek ses (kulak koruma) uyarısını kapatma seçeneği; sisteme kanca eklenmez, açılışta çalışan
   küçük bir betik kullanılır.
 - Tanılama raporu (dosya izinleri, ayarlar, hook durumu, SELinux reddleri).
@@ -49,16 +41,16 @@ kapsam dışındadır (bkz. [Bilinen sınırlamalar](#bilinen-sınırlamalar)).
 - Android 9 (API 28) veya üzeri
 - Root (KernelSU, Magisk ya da APatch); ek bir modül gerekmez. Kulaklık uyarısı seçeneği için kök yöneticisinin
   `/data/adb/post-fs-data.d` dizinini çalıştırması gerekir (üçü de çalıştırır)
-- Vector (LSPosed) 2.1 veya üzeri, libxposed API 101 desteğiyle
+- libxposed API 101 veya üzeri
 
 Geliştirme ve test ortamı: Nothing Phone (4a), Nothing OS 4.1, Android 16, KernelSU, Vector 2.2.
 
 ## Kurulum
 
-1. APK, deponun **Releases** sayfasından (ya da **Actions** çıktısından) indirilip kurulur.
-2. Uygulama açılır ve root izni verilir.
-3. Vector yöneticisinde Sound Tweaks etkinleştirilir. Kapsamda **System Framework** ve **System UI** seçili olmalıdır.
-4. Cihaz yeniden başlatılır.
+1. APK'yı deponun **Releases** sayfasından kurun.
+2. Uygulama açın ve root yöneticinizden Sound Tweaks'a süper kullanıcı yetkisi verin.
+3. Xposed yöneticinizden Sound Tweaks'i etkinleştirin. **System Framework** ve **System UI**'yi kapsama ekleyin.
+4. Cihazı yeniden başlatın.
 5. Uygulamada **Ayarlar** sekmesindeki Vector kartı kancaların aktif olduğunu göstermelidir.
 
 ## Kullanım
@@ -83,12 +75,6 @@ bağlamıyla işaretlenir.
 
 Bağlam, uygulama her açıldığında ve her ses yazıldığında yeniden uygulanır. Sistem güncellemesi dosya bağlamlarını
 yeniden yazarsa uygulamanın bir kez açılması yeterlidir.
-
-### Arayüz
-
-Üst başlık iki durumludur (geniş/dar); kaydırma eşiği aşılınca yaylı bir geçişle daralır, arka planı yükseklikle
-birlikte küçülür ve listenin üstüne biner. Liste satırlarına kaydırma sırasında efekt uygulanmaz; yalnızca liste ilk
-açılırken satırlar sırayla belirir. "Animasyonları azalt" açıkken geçişler sadeleşir.
 
 ### Hook'lar
 
@@ -154,7 +140,7 @@ taşırıyorsa yumuşak limiter uygulanır.
 - **Tanılama:** Ayarlar → Araçlar → Tanı raporu oluştur. Ön sürümlerde "Ayrıntılı olay kaydı" açıkken son SystemUI
   olayı da rapora yazılır.
 - **Kulaklık uyarısı hâlâ çıkıyor:** Kök yöneticisi `post-fs-data.d` betiklerini çalıştırmıyor olabilir ya da uyarıyı
-  açılışta okuyan özellikler üretici tarafından ezilmiş olabilir; seçeneği açıp cihazı yeniden başlat ve tanı raporuna bak.
+  açılışta okuyan özellikler üretici tarafından ezilmiş olabilir; seçeneği açıp cihazı yeniden başlatın ve tanı raporuna bakın.
 
 ## Derleme
 
@@ -169,54 +155,6 @@ gradle wrapper --gradle-version <gradle-wrapper.properties içindeki sürüm>   
 `versionName` `app/build.gradle.kts` içindedir; `versionCode` CI çalışma numarasından gelir. Yerel derlemede imza
 anahtarı verilmezse sürüm APK'sı debug anahtarıyla imzalanır. Ayrıntılı olay kaydı yalnızca CI ön derlemesinde
 (`SOUNDTWEAKS_VERBOSE=true`) ve debug derlemelerinde APK'ya girer; release derlemelerinde yoktur.
-
-## CI/CD
-
-| Akış | Tetikleyici | Çıktı |
-|---|---|---|
-| `prebuild.yml` (Pre-build) | Her push, PR ve elle | İmzalı APK (artifact, ayrıntılı olay kaydı dahil) ve varsayılan dalda `pre-<çalışma no>` etiketli ön sürüm (son 10 saklanır) |
-| `release.yml` (Release) | Yalnızca elle | `v<versionName>` etiketli tek bir GitHub sürümü; aynı sürümün **hem** release APK'sı (`SoundTweaks-<sürüm>.apk`) hem de debug APK'sı (`SoundTweaks-<sürüm>-debug.apk`, ayrıntılı olay kaydıyla) eklenir; imza anahtarı yoksa başarısız olur, aynı sürüm numarası varsa durur |
-| `build-apk.yml` | Yukarıdakiler çağırır | Ortak derleme ve imzalama adımları |
-| `security.yml` (Security and quality scan) | Push, PR, haftalık, elle | Android Lint, Semgrep, CodeQL (Java/Kotlin ve GitHub Actions, `security-and-quality`), Gitleaks (git geçmişinde gizli anahtar ve imza anahtarı dosyası), zizmor (workflow güvenliği), PR'larda bağımlılık incelemesi |
-| `dependabot.yml` | Haftalık | Gradle ve GitHub Actions sürüm güncellemeleri (gruplu); libxposed API'sinin büyük sürüm atlaması yok sayılır |
-
-Android Lint hata bulursa, Semgrep ERROR düzeyinde ve zizmor yüksek/kritik düzeyde bulgu verirse iş başarısız olur; daha düşük
-önemdeki bulgular yalnızca raporlanır; sonuçlar iş özetinde ve artifact olarak (`lint-raporu`,
-`semgrep-raporu`, `zizmor-raporu`) bulunur. Gitleaks, CodeQL ve bağımlılık incelemesi bulgu varsa işi başarısız yapar. Ön derleme PR'larda imza sırlarını görmez
-(PR derlemeleri debug anahtarıyla imzalanır) ve derleme akışına yalnızca dört imza sırrı aktarılır.
-Sürüm sayfaları GitHub CLI (`gh release create`) ile oluşturulur, üçüncü taraf yayın eklentisi kullanılmaz.
-`gradle/actions/setup-gradle` tam commit SHA'sına sabitlenmiştir; sürüm yorumunu Dependabot güncel tutar.
-
-### İmza anahtarı
-
-Ön sürümler, release sürümleri ve debug APK aynı anahtarla imzalanır; bu sayede biri diğerinin üzerine kurulabilir. Anahtar depoya
-konmaz, **Settings → Secrets and variables → Actions** altına dört gizli değişken olarak eklenir:
-
-| Gizli değişken | İçerik |
-|---|---|
-| `SIGNING_KEYSTORE_BASE64` | Keystore dosyasının base64 hâli |
-| `SIGNING_KEYSTORE_PASSWORD` | Keystore parolası |
-| `SIGNING_KEY_ALIAS` | Anahtar takma adı |
-| `SIGNING_KEY_PASSWORD` | Anahtar parolası |
-
-Anahtar üretme ve base64'e çevirme:
-
-```sh
-keytool -genkeypair -v -keystore soundtweaks.jks -alias soundtweaks \
-  -keyalg RSA -keysize 4096 -validity 10000
-base64 -w0 soundtweaks.jks    # çıktı SIGNING_KEYSTORE_BASE64 olarak kaydedilir
-```
-
-Keystore dosyası ve parolalar yedeklenmelidir; kaybedilirse mevcut kurulumların üzerine güncelleme yapılamaz.
-`SIGNING_KEYSTORE_BASE64` tanımlı değilse ön derleme debug anahtarıyla imzalanır (her derlemede farklı imza) ve
-uyarı verir. Derleme sonunda `apksigner` sertifika özeti günlüğe yazılır; iki sürümün aynı anahtarla imzalandığı bu
-özetle doğrulanabilir.
-
-### Sürüm çıkarma
-
-1. `app/build.gradle.kts` içinde `versionName` artırılır ve push edilir.
-2. **Actions → Release → Run workflow** çalıştırılır (isteğe bağlı sürüm notu girilebilir).
-3. Release ve debug APK'ları `v<versionName>` etiketiyle **Releases** sayfasında birlikte yayımlanır.
 
 ## Proje yapısı
 
