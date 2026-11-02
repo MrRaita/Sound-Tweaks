@@ -156,9 +156,33 @@ gradle wrapper --gradle-version <gradle-wrapper.properties içindeki sürüm>   
 anahtarı verilmezse sürüm APK'sı debug anahtarıyla imzalanır. Ayrıntılı olay kaydı yalnızca CI ön derlemesinde
 (`SOUNDTWEAKS_VERBOSE=true`) ve debug derlemelerinde APK'ya girer; release derlemelerinde yoktur.
 
-### İmza anahtarı
+## Proje yapısı
 
-Ön sürümler, release sürümleri ve debug APK aynı anahtarla imzalandığı için sürümler arasında veri kaybı olmadan dilediğiniz gibi geçiş yapabilirsiniz.
+```
+app/src/main/
+├── kotlin/dev/soundtweaks/nothing/
+│   ├── MainActivity.kt
+│   ├── core/    # katalog, tarayıcı, dönüştürücü, root, depo
+│   ├── hook/    # libxposed giriş sınıfı ve hook'lar
+│   └── ui/      # Compose ekranları, tema, paletler, ViewModel
+├── resources/META-INF/xposed/   # module.prop, scope.list, java_init.list
+└── res/
+```
 
-| Gizli değişken | İçerik |
-|-
+## Bilinen sınırlamalar
+
+- Kamera, video kaydı, NFC, ters şarj ve arama bildirim sesleri Sound Tweaks'in kapsamındaki süreçlerde çalınmaz. Bu
+  sesler için ilgili uygulamaların Vector kapsamına alınması ve ses dosyalarının uygulama süreçlerine aktarılması
+  (Vector uzak dosya desteği) gerekir; henüz uygulanmamıştır.
+- Eski kamera API'sinin `cameraserver` içinde yerel kodla çaldığı deklanşör sesi hook'lanamaz.
+- Kulaklık uyarısı seçeneği kök yöneticisinin `/data/adb/post-fs-data.d` betiklerini çalıştırmasına bağlıdır.
+- Sistem ses kütüphanesi `/<bölüm>/media/audio` dizinlerini kökteki tüm bölümlerde arar; üreticiye özel ses
+  dizinleri bu kalıbın dışındaysa listelenmez. Tanı raporundaki "sound directories" (ses dizinleri) bölümü cihazda nelerin bulunduğunu gösterir.
+- Hook noktaları AOSP sınıf adlarına dayanır; üreticiye özel arayüzlerde sınıf adları farklıysa ilgili hook çalışmaz ve
+  durum kartında hata olarak görünür.
+
+## Lisans
+
+Sound Tweaks, [GNU Genel Kamu Lisansı sürüm 3](LICENSE) (GPL-3.0-or-later) ile lisanslanmıştır. Programı, Özgür Yazılım
+Vakfı'nın yayımladığı GPL'in 3. sürümü ya da (isteğinize bağlı olarak) daha yeni bir sürümü koşullarında yeniden
+dağıtabilir ve değiştirebilirsiniz. Program yararlı olması umuduyla dağıtılır, ancak herhangi bir garanti vermez.
