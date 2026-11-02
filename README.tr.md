@@ -4,23 +4,18 @@
 
 > Bu belge İngilizce README'nin Türkçe çevirisidir; farklılık varsa İngilizce olan geçerlidir.
 
-Android sistem seslerini (klavye, dokunma, ekran görüntüsü, kilit ekranı, şarj, dock) değiştirmeye yarayan,
-LSPosed modülü.
+Sound Tweaks, Android sistem seslerini (klavye, dokunma, ekran görüntüsü, kilit ekranı, şarj, dock) değiştirmeye yarayan bir LSPosed modülüdür.
 
-Sistem dosyaları değiştirilmez. Seçilen sesler ayrı bir depoda tutulur ve ilgili sistem süreçlerinde yalnızca
-ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler sıfırlandığında sistem kendi varsayılanlarına döner.
+Sistem dosyaları değiştirilmez. Seçilen sesler ayrı bir depoda tutulur ve ilgili sistem süreçlerinde yalnızca ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler sıfırlandığında sistem kendi varsayılanlarına döner.
 
 ## Özellikler
 
-- Sesleri dosya yolundan değil, uygulama içinden seçme: sistem seslerinden, kullanıcının kendi dosyasından ya da
-  susturarak.
-- Sistem ses dizinlerinin taranıp listelendiği, dinlenebilen kütüphane.
+- Sesleri dosya yolundan değil, uygulama içinden seçme: sistem seslerinden, kendi dosyanızdan ya da susturarak.
+- Sistem ses dizinlerini tarayıp listeleyen, dinlenebilir kütüphane.
 - Her ses için ayrı normalize ayarı (genel, kapalı ya da özel hedef seviye); tepeler yumuşak limiter ile sınırlanır.
-- Dokunma, kilit ekranı ve şarj sesleri için sistem anahtarlarının durumunu gösterme ve değiştirme (zil modu ile ses
-  seviyeleri dahil).
-- İsteğe bağlı "zorla çal" modu: kilit sesleri sessiz/titreşim modunda da duyulacak şekilde medya ses akışından çalınır.
-- Kulaklıkta çıkan yüksek ses (kulak koruma) uyarısını kapatma seçeneği; sisteme kanca eklenmez, açılışta çalışan
-  küçük bir betik kullanılır.
+- Dokunma, kilit ekranı ve şarj sesleri için sistem anahtarlarının durumunu gösterme ve değiştirme (zil modu ile ses seviyeleri dahil).
+- İsteğe bağlı "zorla çal" modu: kilit sesleri, sessiz/titreşim modunda da duyulacak şekilde medya ses akışından çalınır.
+- Kulaklıkta çıkan yüksek ses (kulak koruma) uyarısını kapatma seçeneği; sisteme hook eklenmez, açılışta çalışan küçük bir betik kullanılır.
 - Tanılama raporu (dosya izinleri, ayarlar, hook durumu, SELinux reddleri).
 
 ## Desteklenen sesler
@@ -33,53 +28,45 @@ ses yolu yönlendirilir; modül devre dışı bırakıldığında ya da sesler s
 | Şarj ve pil | Düşük pil, şarj, kablosuz şarj | `Settings.Global` yolu |
 | Dock | Masa/araç dock'u, dock'tan çıkarma | `Settings.Global` yolu |
 
-Kamera, video kaydı, NFC ve ters şarj sesleri `system_server` ya da SystemUI dışındaki süreçlerde çalındığı için
-kapsam dışındadır (bkz. [Bilinen sınırlamalar](#bilinen-sınırlamalar)).
+Kamera, video kaydı, NFC ve ters şarj sesleri `system_server` ya da SystemUI dışındaki süreçlerde çalındığı için kapsam dışındadır (bkz. [Bilinen sınırlamalar](#bilinen-sınırlamalar)).
 
 ## Gereksinimler
 
 - Android 9 (API 28) veya üzeri
-- Root (KernelSU, Magisk ya da APatch); ek bir modül gerekmez. Kulaklık uyarısı seçeneği için kök yöneticisinin
-  `/data/adb/post-fs-data.d` dizinini çalıştırması gerekir (üçü de çalıştırır)
-- libxposed API 101 veya üzeri
+- Root (KernelSU, Magisk ya da APatch); ek bir modül gerekmez. Kulaklık uyarısı seçeneği için kök yöneticisinin `/data/adb/post-fs-data.d` dizinindeki betikleri çalıştırması gerekir (üçü de çalıştırır)
+- libxposed API 101'i destekleyen bir LSPosed çerçevesi (örneğin Vector)
 
 Geliştirme ve test ortamı: Nothing Phone (4a), Nothing OS 4.1, Android 16, KernelSU, Vector 2.2.
 
 ## Kurulum
 
-1. APK'yı deponun **Releases** sayfasından kurun.
-2. Uygulama açın ve root yöneticinizden Sound Tweaks'a süper kullanıcı yetkisi verin.
-3. Xposed yöneticinizden Sound Tweaks'i etkinleştirin. **System Framework** ve **System UI**'yi kapsama ekleyin.
+1. APK'yı deponun **Releases** sayfasından indirip kurun.
+2. Uygulamayı açın ve kök yöneticinizden Sound Tweaks'e süper kullanıcı yetkisi verin.
+3. Vector (LSPosed) yöneticisinden Sound Tweaks'i etkinleştirin ve **System Framework** ile **System UI**'yi kapsama ekleyin.
 4. Cihazı yeniden başlatın.
-5. Uygulamada **Ayarlar** sekmesindeki Vector kartı kancaların aktif olduğunu göstermelidir.
+5. Uygulamada **Ayarlar** sekmesindeki Vector kartı, hook'ların aktif olduğunu göstermelidir.
 
 ## Kullanım
 
-- **Sesler:** Bir sese dokunulduğunda sistem seslerinden seçme, kendi dosyasını seçme, susturma ya da varsayılana
-  dönme seçenekleri açılır. Dosyalar çözülüp WAV olarak depoya yazılır.
-- **Kütüphane:** Bulunan sistem sesleri filtrelenir, arama simgesiyle aranır ve dinlenir.
-- **Gelişmiş:** Sistem ses anahtarları, ses işleme (genel ve ses başına normalize), kilit seslerini zorla çal,
-  kulaklık uyarısını kapat.
-- **Ayarlar:** Durum kartları (Root ve Vector modülü), tema ve renkler, alt çubuk düzeni, araçlar (Sistem Arayüzünü
-  yenileme, tanı raporu).
+- **Sesler:** Bir sese dokunduğunuzda sistem seslerinden seçme, kendi dosyanızı seçme, susturma ya da varsayılana dönme seçenekleri açılır. Dosyalar çözülüp WAV olarak depoya yazılır.
+- **Kütüphane:** Bulunan sistem sesleri filtrelenebilir, arama simgesiyle aranabilir ve dinlenebilir.
+- **Gelişmiş:** Sistem ses anahtarları, ses işleme (genel ve ses başına normalize), kilit seslerini zorla çalma ve kulaklık uyarısını kapatma.
+- **Ayarlar:** Durum kartları (Root ve Vector modülü), tema ve renkler, alt çubuk düzeni, araçlar (Sistem Arayüzünü yenileme, tanı raporu).
 
 ## Nasıl çalışır
 
 ### Ses deposu
 
-Seçilen sesler root ile `/data/system/soundtweaks` altına yazılır ve herkesin okuyabildiği `system_file` SELinux
-bağlamıyla işaretlenir.
+Seçilen sesler root ile `/data/system/soundtweaks` altına yazılır ve herkesin okuyabildiği `system_file` SELinux bağlamıyla işaretlenir.
 
 - `override/<StokAdı>.<uzantı>`: hook'ların yönlendirdiği dosyalar
 - `files/<ayarAnahtarı>.<uzantı>`: `Settings.Global` yollarının gösterdiği dosyalar
 
-Bağlam, uygulama her açıldığında ve her ses yazıldığında yeniden uygulanır. Sistem güncellemesi dosya bağlamlarını
-yeniden yazarsa uygulamanın bir kez açılması yeterlidir.
+Bağlam, uygulama her açıldığında ve her ses yazıldığında yeniden uygulanır. Bir sistem güncellemesi dosya bağlamlarını yeniden yazarsa uygulamayı bir kez açmanız yeterlidir.
 
 ### Hook'lar
 
-libxposed API 101 ile yazılmıştır (`minApiVersion = targetApiVersion = 101`). Giriş sınıfı
-`com.mrraita.soundtwks.hook.SoundTweaksModule`, meta veriler `app/src/main/resources/META-INF/xposed/` altındadır.
+libxposed API 101 ile yazılmıştır (`minApiVersion = targetApiVersion = 101`). Giriş sınıfı `com.mrraita.soundtwks.hook.SoundTweaksModule`, meta veriler `app/src/main/resources/META-INF/xposed/` altındadır.
 
 | Süreç | Sınıf / metot | Amaç |
 |---|---|---|
@@ -87,25 +74,19 @@ libxposed API 101 ile yazılmıştır (`minApiVersion = targetApiVersion = 101`)
 | SystemUI | `ScreenshotSoundProviderImpl.getScreenshotSound` | Ekran görüntüsü sesini değiştirir |
 | SystemUI | `KeyguardViewMediator.playSounds`, `playTrustedSound` | Yalnızca "zorla çal" modunda kilit seslerini çalar |
 
-Vector kartında "Çerçeve" satırı Vector'ün kendi API sürümünü, "Modül API" satırı Sound Tweaks'in derlendiği API'yi
-(101) gösterir; ikisinin farklı olması normaldir. Her hook ayrı bir `try/catch` içindedir; hata durumunda stok
-davranış sürer. Kilit sesleri varsayılanda stok
-mekanizmayla çalar: sistem `lock_sound`, `unlock_sound` ve `trusted_sound` ayarlarındaki yolu Sistem Arayüzü açılırken
-bir kez yükler. "Zorla çal" modu kapalıyken SystemUI'a hook eklenmez.
+Vector kartındaki "Çerçeve" satırı Vector'ün kendi API sürümünü, "Modül API" satırı ise Sound Tweaks'in derlendiği API sürümünü (101) gösterir; ikisinin farklı olması normaldir. Her hook ayrı bir `try/catch` içindedir; hata durumunda stok davranış sürer.
+
+Kilit sesleri varsayılan olarak stok mekanizmayla çalar: sistem, `lock_sound`, `unlock_sound` ve `trusted_sound` ayarlarındaki yolu Sistem Arayüzü açılırken bir kez yükler. "Zorla çal" modu kapalıyken SystemUI'ye hook eklenmez.
 
 ### Kulaklık ses uyarısı
 
-Android, yeniden başlatmadan sonra kulaklıkta ses belirli bir seviyenin üzerine çıkarılırken bir uyarı gösterir. Uyarıyı
-açılışta okunan üç sistem özelliği denetler. Seçenek açıldığında Sound Tweaks şunları yapar:
+Android, yeniden başlatmadan sonra kulaklıkta ses belirli bir seviyenin üzerine çıkarılırken bir uyarı gösterir. Bu uyarıyı, açılışta okunan üç sistem özelliği denetler. Seçenek açıldığında Sound Tweaks şunları yapar:
 
-- `/data/adb/soundtweaks/hp_warning.sh` betiğini yazar; betik `audio.safemedia.bypass=true`,
-  `audio.safemedia.force=false` ve `audio.safemedia.csd.force=false` değerlerini ayarlar (`resetprop`, yoksa `setprop`).
-- Sistem başlamadan önce çalışsın diye `/data/adb/post-fs-data.d/soundtweaks_hp_warning.sh` içine yalnızca betiği çağıran
-  tek satır koyar.
-- Özellikleri o anda da bir kez ayarlar, böylece yeniden başlatma beklemek gerekmez.
+- `/data/adb/soundtweaks/hp_warning.sh` betiğini yazar; betik `audio.safemedia.bypass=true`, `audio.safemedia.force=false` ve `audio.safemedia.csd.force=false` değerlerini ayarlar (`resetprop`, yoksa `setprop` ile).
+- Sistem başlamadan önce çalışması için `/data/adb/post-fs-data.d/soundtweaks_hp_warning.sh` dosyasına yalnızca betiği çağıran tek bir satır koyar.
+- Özellikleri o anda da bir kez ayarlar; böylece yeniden başlatmayı beklemek gerekmez.
 
-Seçenek kapatılınca iki dosya da silinir ve uyarı sonraki açılıştan itibaren geri gelir. Hiçbir sistem sürecine hook
-eklenmez. Uygulamayı kaldırmadan önce seçeneği kapatmak gerekir; aksi halde betik `/data/adb` altında kalır. Elle temizlemek için:
+Seçenek kapatıldığında iki dosya da silinir ve uyarı sonraki açılıştan itibaren geri gelir. Hiçbir sistem sürecine hook eklenmez. Uygulamayı kaldırmadan önce seçeneği kapatmalısınız; aksi halde betik `/data/adb` altında kalır. Elle temizlemek için:
 
 ```sh
 su -c "rm -rf /data/adb/soundtweaks /data/adb/post-fs-data.d/soundtweaks_hp_warning.sh"
@@ -113,54 +94,42 @@ su -c "rm -rf /data/adb/soundtweaks /data/adb/post-fs-data.d/soundtweaks_hp_warn
 
 ### Ses işleme
 
-Dosyalar `MediaExtractor` ve `MediaCodec` ile çözülür ve 16 bit PCM WAV olarak yazılır. Normalize ölçütü tüm dosyanın
-ortalama (RMS) seviyesidir (ffmpeg `volumedetect` "mean_volume" ile aynı); hedefe ulaşmak için gereken kazanç tepeleri
-taşırıyorsa yumuşak limiter uygulanır.
+Dosyalar `MediaExtractor` ve `MediaCodec` ile çözülür ve 16 bit PCM WAV olarak yazılır. Normalize ölçütü, tüm dosyanın ortalama (RMS) seviyesidir (ffmpeg `volumedetect` "mean_volume" değeriyle aynı); hedefe ulaşmak için gereken kazanç tepeleri taşırıyorsa yumuşak limiter uygulanır.
 
 ## Kaynak kullanımı
 
 - Uygulamada servis, açılış alıcısı ya da arka plan işi yoktur.
 - Zil modu ve ses seviyesi dinleyicileri yalnızca uygulama ekrandayken açıktır.
-- Root sorguları açılışta tek `su` çağrısında toplanır; kütüphane ilk gerektiğinde taranır.
-- Hook'lar olay tabanlıdır; yoklama ya da sürekli çalışan iş parçacığı yoktur. Override dizini bellekte tutulur ve
-  yalnızca dizinin değişim zamanı sorgulanır.
-- Yalnızca ses akışındaki metotlar derlenmiş koddan çıkarılır (deopt).
-- Kulaklık uyarısı betiği yalnızca açılışta bir kez çalışır ve üç özellik ayarlayıp çıkar.
-- Ayrıntılı olay kaydı yalnızca ön sürümlerde ve debug sürümlerinde bulunur, varsayılan olarak kapalıdır; release sürümde bu kod hiç
-  çalışmaz.
+- Root sorguları açılışta tek bir `su` çağrısında toplanır; kütüphane ilk gerektiğinde taranır.
+- Hook'lar olay tabanlıdır; yoklama ya da sürekli çalışan iş parçacığı yoktur. Override dizini bellekte tutulur ve yalnızca dizinin değişim zamanı sorgulanır.
+- Yalnızca ilgili sınıfların (`SoundEffectsHelper` ve `KeyguardViewMediator`) metotları derlenmiş koddan çıkarılır (deopt).
+- Kulaklık uyarısı betiği açılışta yalnızca bir kez çalışır, üç özelliği ayarlar ve çıkar.
+- Ayrıntılı olay kaydı yalnızca ön sürümlerde ve debug sürümlerinde bulunur, varsayılan olarak kapalıdır; release sürümlerde bu kod hiç çalışmaz.
 
 ## Sorun giderme
 
-- **Sesler çalmıyor:** Gelişmiş sekmesindeki "Sistem ses anahtarları" kartında dokunma, kilit ekranı ve şarj sesleri
-  açık olmalı, zil modu normal olmalıdır. Telefon sessiz ya da titreşimdeyken kilit ve dokunma sesleri çalmaz;
-  kilit sesleri için "zorla çal" modu bunu aşar.
-- **Kilit sesi değişmedi:** Kilit sesleri Sistem Arayüzü açılırken yüklendiği için değişiklikten sonra Sistem Arayüzünün
-  yenilenmesi gerekir (uygulama bunu sorar).
-- **Vector kartı kırmızı:** Modül etkin değil ya da kapsam eksik; kapsam ve yeniden başlatma kontrol edilmelidir.
-- **Tanılama:** Ayarlar → Araçlar → Tanı raporu oluştur. Ön sürümlerde "Ayrıntılı olay kaydı" açıkken son SystemUI
-  olayı da rapora yazılır.
-- **Kulaklık uyarısı hâlâ çıkıyor:** Kök yöneticisi `post-fs-data.d` betiklerini çalıştırmıyor olabilir ya da uyarıyı
-  açılışta okuyan özellikler üretici tarafından ezilmiş olabilir; seçeneği açıp cihazı yeniden başlatın ve tanı raporuna bakın.
+- **Sesler çalmıyor:** Gelişmiş sekmesindeki "Sistem ses anahtarları" kartında dokunma, kilit ekranı ve şarj sesleri açık olmalı, zil modu da normal olmalıdır. Telefon sessiz ya da titreşimdeyken kilit ve dokunma sesleri çalmaz; kilit sesleri için "zorla çal" modu bunu aşar.
+- **Kilit sesi değişmedi:** Kilit sesleri Sistem Arayüzü açılırken yüklendiği için, değişiklikten sonra Sistem Arayüzünün yenilenmesi gerekir (uygulama bunu sorar).
+- **Vector kartı kırmızı:** Modül etkin değil ya da kapsam eksik; kapsamı kontrol edip cihazı yeniden başlatın.
+- **Tanılama:** Ayarlar → Araçlar → Tanı raporu oluştur. Ön sürümlerde ve debug sürümlerinde "Ayrıntılı olay kaydı" açıkken son SystemUI olayı da rapora yazılır.
+- **Kulaklık uyarısı hâlâ çıkıyor:** Kök yöneticiniz `post-fs-data.d` betiklerini çalıştırmıyor ya da uyarıyı açılışta okuyan özellikler üretici tarafından ezilmiş olabilir; seçeneği açıp cihazı yeniden başlatın ve tanı raporuna bakın.
 
 ## Derleme
 
-Gereksinimler: JDK 17 veya üzeri (CI JDK 21 kullanır). Gradle sarmalayıcı jar dosyası ikili olduğu için depoda yer
-almaz; sürüm ve SHA-256 sağlama toplamı `gradle/wrapper/gradle-wrapper.properties` dosyasından okunur ve CI'da dağıtım bu toplamla doğrulanır.
+Gereksinim: JDK 17 veya üzeri (CI, JDK 21 kullanır). Gradle sarmalayıcı jar dosyası ikili olduğu için depoda yer almaz; sürüm ve SHA-256 sağlama toplamı `gradle/wrapper/gradle-wrapper.properties` dosyasından okunur ve CI'da dağıtım bu toplamla doğrulanır.
 
 ```sh
 gradle wrapper --gradle-version <gradle-wrapper.properties içindeki sürüm>   # bir kez
 ./gradlew assembleRelease
 ```
 
-`versionName` `app/build.gradle.kts` içindedir; `versionCode` CI çalışma numarasından gelir. Yerel derlemede imza
-anahtarı verilmezse sürüm APK'sı debug anahtarıyla imzalanır. Ayrıntılı olay kaydı yalnızca CI ön derlemesinde
-(`SOUNDTWEAKS_VERBOSE=true`) ve debug derlemelerinde APK'ya girer; release derlemelerinde yoktur.
+`versionName` `app/build.gradle.kts` içindedir; `versionCode` CI çalışma numarasından gelir. Yerel derlemede imza anahtarı verilmezse release APK'sı debug anahtarıyla imzalanır. Ayrıntılı olay kaydı yalnızca CI ön derlemesinde (`SOUNDTWEAKS_VERBOSE=true`) ve debug derlemelerinde APK'ya girer; release derlemelerinde yoktur.
 
 ## Proje yapısı
 
 ```
 app/src/main/
-├── kotlin/dev/soundtweaks/nothing/
+├── kotlin/com/mrraita/soundtwks/
 │   ├── MainActivity.kt
 │   ├── core/    # katalog, tarayıcı, dönüştürücü, root, depo
 │   ├── hook/    # libxposed giriş sınıfı ve hook'lar
@@ -171,18 +140,12 @@ app/src/main/
 
 ## Bilinen sınırlamalar
 
-- Kamera, video kaydı, NFC, ters şarj ve arama bildirim sesleri Sound Tweaks'in kapsamındaki süreçlerde çalınmaz. Bu
-  sesler için ilgili uygulamaların Vector kapsamına alınması ve ses dosyalarının uygulama süreçlerine aktarılması
-  (Vector uzak dosya desteği) gerekir; henüz uygulanmamıştır.
+- Kamera, video kaydı, NFC, ters şarj ve arama bildirim sesleri, Sound Tweaks'in kapsamındaki süreçlerde çalınmaz. Bunları değiştirmek için ilgili uygulamaların Vector kapsamına eklenmesi ve ses dosyalarının bu uygulama süreçlerine aktarılması (Vector uzak dosya desteği) gerekir; bu henüz uygulanmamıştır.
 - Eski kamera API'sinin `cameraserver` içinde yerel kodla çaldığı deklanşör sesi hook'lanamaz.
-- Kulaklık uyarısı seçeneği kök yöneticisinin `/data/adb/post-fs-data.d` betiklerini çalıştırmasına bağlıdır.
-- Sistem ses kütüphanesi `/<bölüm>/media/audio` dizinlerini kökteki tüm bölümlerde arar; üreticiye özel ses
-  dizinleri bu kalıbın dışındaysa listelenmez. Tanı raporundaki "sound directories" (ses dizinleri) bölümü cihazda nelerin bulunduğunu gösterir.
-- Hook noktaları AOSP sınıf adlarına dayanır; üreticiye özel arayüzlerde sınıf adları farklıysa ilgili hook çalışmaz ve
-  durum kartında hata olarak görünür.
+- Kulaklık uyarısı seçeneği, kök yöneticisinin `/data/adb/post-fs-data.d` betiklerini çalıştırmasına bağlıdır.
+- Sistem ses kütüphanesi, kökteki tüm bölümlerde `/<bölüm>/media/audio` dizinlerini arar; üreticiye özel ses dizinleri bu kalıbın dışındaysa listelenmez. Tanı raporundaki "sound directories" bölümü, cihazda nelerin bulunduğunu gösterir.
+- Hook noktaları AOSP sınıf adlarına dayanır; üreticiye özel arayüzlerde sınıf adları farklıysa ilgili hook çalışmaz ve durum kartında hata olarak görünür.
 
 ## Lisans
 
-Sound Tweaks, [GNU Genel Kamu Lisansı sürüm 3](LICENSE) (GPL-3.0-or-later) ile lisanslanmıştır. Programı, Özgür Yazılım
-Vakfı'nın yayımladığı GPL'in 3. sürümü ya da (isteğinize bağlı olarak) daha yeni bir sürümü koşullarında yeniden
-dağıtabilir ve değiştirebilirsiniz. Program yararlı olması umuduyla dağıtılır, ancak herhangi bir garanti vermez.
+Sound Tweaks, [GNU Genel Kamu Lisansı sürüm 3](LICENSE) (GPL-3.0-or-later) ile lisanslanmıştır. Programı, Özgür Yazılım Vakfı'nın yayımladığı GPL'in 3. sürümünün ya da (isteğinize bağlı olarak) daha yeni bir sürümünün koşulları altında yeniden dağıtabilir ve değiştirebilirsiniz. Program yararlı olması umuduyla dağıtılır, ancak herhangi bir garanti vermez.
