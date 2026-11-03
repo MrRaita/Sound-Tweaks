@@ -36,6 +36,21 @@ Camera, video recording, NFC and reverse-charging sounds are played in processes
 
 Development and test environment: Nothing Phone (4a), Nothing OS 4.1, Android 16, KernelSU, Vector 2.2.
 
+## Why root is required
+
+The hooks themselves run inside the system processes through LSPosed and do not need root. The app side does, because a normal app is not allowed to touch the places the system reads sounds from:
+
+| What the app does | Why it needs root |
+|---|---|
+| Writes the chosen sound files to `/data/system/soundtweaks` | Apps cannot write to `/data/system`, and the files must carry the `system_file` SELinux label so `system_server` and SystemUI can read them |
+| Points `lock_sound`, `unlock_sound`, `low_battery_sound` and the other `Settings.Global` sound paths at those files | Writing `Settings.Global` needs the `WRITE_SECURE_SETTINGS` permission, which normal apps cannot get |
+| Changes the system switches (touch sounds, lock screen sounds, charging sounds) | Same permission as above |
+| Refreshes SystemUI so lock sounds are reloaded | Stopping another process requires root |
+| Turns off the headphone volume warning | The three properties must be set by a script that runs at boot, before the system starts; this is only possible from `/data/adb` |
+| Builds the diagnostic report | Reading file labels, system settings and SELinux denials requires root |
+
+Browsing the sound library and playing previews do not need root; those read world-readable system directories. In practice the root requirement adds little on top of LSPosed, which needs root to work in the first place.
+
 ## Installation
 
 1. Download the APK from the repository's **Releases** page and install it.
