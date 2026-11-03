@@ -38,6 +38,21 @@ Kamera, video kaydı, NFC ve ters şarj sesleri `system_server` ya da SystemUI d
 
 Geliştirme ve test ortamı: Nothing Phone (4a), Nothing OS 4.1, Android 16, KernelSU, Vector 2.2.
 
+## Root neden gerekli
+
+Hook'ların kendisi LSPosed aracılığıyla sistem süreçlerinin içinde çalışır ve root gerektirmez. Root'a uygulama tarafı ihtiyaç duyar, çünkü sıradan bir uygulamanın sistemin sesleri okuduğu yerlere dokunmasına izin verilmez:
+
+| Uygulamanın yaptığı iş | Neden root gerekir |
+|---|---|
+| Seçilen ses dosyalarını `/data/system/soundtweaks` altına yazar | Uygulamalar `/data/system` altına yazamaz; ayrıca `system_server` ve SystemUI'nin dosyaları okuyabilmesi için dosyalar `system_file` SELinux etiketini taşımalıdır |
+| `lock_sound`, `unlock_sound`, `low_battery_sound` ve diğer `Settings.Global` ses yollarını bu dosyalara yönlendirir | `Settings.Global` yazmak, sıradan uygulamaların alamadığı `WRITE_SECURE_SETTINGS` iznini ister |
+| Sistem anahtarlarını (dokunma sesleri, kilit ekranı sesleri, şarj sesleri) değiştirir | Yukarıdakiyle aynı izin |
+| Kilit seslerinin yeniden yüklenmesi için Sistem Arayüzünü yeniler | Başka bir süreci durdurmak root ister |
+| Kulaklık ses uyarısını kapatır | Üç sistem özelliği, sistem başlamadan önce açılışta çalışan bir betikle ayarlanmalıdır; bu yalnızca `/data/adb` üzerinden mümkündür |
+| Tanı raporunu oluşturur | Dosya etiketlerini, sistem ayarlarını ve SELinux reddlerini okumak root ister |
+
+Ses kütüphanesine göz atmak ve önizleme dinlemek root gerektirmez; bunlar herkesin okuyabildiği sistem dizinlerini okur. Pratikte root gereksinimi, zaten çalışmak için root isteyen LSPosed'in üzerine pek bir şey eklemez.
+
 ## Kurulum
 
 1. APK'yı deponun **Releases** sayfasından indirip kurun.
