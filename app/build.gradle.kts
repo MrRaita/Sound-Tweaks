@@ -75,7 +75,7 @@ dependencies {
     // libxposed: the framework (Vector) provides the API at runtime; it is not packaged into the APK
     compileOnly("io.github.libxposed:api:101.0.1")
 
-    implementation("androidx.core:core-ktx:1.17.0")
+    implementation("androidx.core:core-ktx:1.19.1")
     implementation("androidx.activity:activity-compose:1.12.1")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.9.4")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.9.4")
