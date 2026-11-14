@@ -33,6 +33,15 @@ object SoundPaths {
     /** SELinux type readable by everyone (including SystemUI) */
     const val CONTEXT = "u:object_r:system_file:s0"
 
+    /** Samsung Keyboard and its key sounds. They are raw resources of the keyboard app (res/raw), so the hook matches the
+     *  resource entry name, which stays readable even though the file paths inside the APK are shortened (e.g. res/Lf7.ogg). */
+    const val KB_SAMSUNG = "com.samsung.android.honeyboard"
+    const val SAM_STD = "s_sip_regular_standard"
+    const val SAM_MOD = "s_sip_regular_modifier"
+    const val SAM_DEL = "s_sip_regular_delete"
+    /** Keyboard apps whose probe file is added to the diagnostic report */
+    val PROBE_PACKAGES = listOf(KB_SAMSUNG)
+
     /** Supported audio extensions, in the order the hook looks for overrides. Single source for the scanner too. */
     val EXTENSIONS = listOf("wav", "ogg", "mp3", "m4a", "flac", "opus", "aac")
 

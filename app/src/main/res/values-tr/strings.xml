@@ -227,6 +227,13 @@
     <string name="slot_key_ret_desc">Enter / gönder tuşu</string>
     <string name="slot_key_inv">Geçersiz tuş</string>
     <string name="slot_key_inv_desc">Basılamayan tuş (çoğu klavye kullanmaz)</string>
+    <string name="slot_sam_std">Samsung Klavye: tuş sesi</string>
+    <string name="slot_sam_std_desc">Harf, rakam ve noktalama tuşları (yalnızca Samsung Klavye)</string>
+    <string name="slot_sam_mod">Samsung Klavye: işlev tuşları</string>
+    <string name="slot_sam_mod_desc">İşlev (modifier) tuşları (yalnızca Samsung Klavye)</string>
+    <string name="slot_sam_del">Samsung Klavye: silme tuşu</string>
+    <string name="slot_sam_del_desc">Geri silme tuşu (yalnızca Samsung Klavye)</string>
+    <string name="msg_keyboard_restart">Samsung Klavye seslerini başlarken yükler: modül yöneticisinde Samsung Klavye\'yi Sound Tweaks\'in kapsamına ekleyin, sonra klavyeyi zorla durdurun ya da cihazı yeniden başlatın.</string>
     <string name="slot_tick">Dokunma tıkı</string>
     <string name="slot_tick_desc">Ekrana dokunma, odak ve geri hareketi</string>
     <string name="slot_screenshot">Ekran görüntüsü</string>

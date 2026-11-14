@@ -2,12 +2,15 @@ package com.mrraita.soundtwks.hook
 
 import android.app.Application
 import android.content.Context
+import android.content.res.AssetFileDescriptor
+import android.content.res.Resources
 import android.media.AudioAttributes
 import android.media.AudioManager
 import android.media.MediaPlayer
 import android.media.SoundPool
 import android.os.Handler
 import android.os.Looper
+import android.os.ParcelFileDescriptor
 import android.provider.Settings
 import android.util.Log
 import com.mrraita.soundtwks.BuildConfig
@@ -21,6 +24,10 @@ import java.io.File
  *
  *  - system_server ("system" scope): replaces the output of SoundEffectsHelper.getResourceFilePath
  *    with /data/system/soundtweaks/override/<stockName>.* when present (keyboard/touch sounds).
+ *  - Samsung Keyboard (only when it is in the module's scope): its key sounds are raw resources of the keyboard app,
+ *    not system effects. Resources.openRawResourceFd is hooked inside the keyboard process; a raw resource whose
+ *    entry name has an override file gets that file instead. Every raw resource name seen is recorded in a probe
+ *    file in the keyboard's own files dir (shown in the diagnostic report).
  *  - SystemUI:
  *      · ScreenshotSoundProviderImpl.getScreenshotSound → MediaPlayer with the custom file
  *      · KeyguardViewMediator.playSounds / playTrustedSound → lock, unlock and trusted-device
@@ -31,6 +38,7 @@ import java.io.File
 class SoundTweaksModule : XposedModule() {
 
     @Volatile private var sysUiHooked = false
+    @Volatile private var keyboardHooked = false
 
     override fun onSystemServerStarting(param: XposedModuleInterface.SystemServerStartingParam) {
         val parts = ArrayList<String>()
@@ -45,6 +53,17 @@ class SoundTweaksModule : XposedModule() {
     }
 
     override fun onPackageReady(param: XposedModuleInterface.PackageReadyParam) {
+        if (param.packageName == SoundPaths.KB_SAMSUNG) {
+            if (!keyboardHooked) {
+                keyboardHooked = true
+                try {
+                    hookKeyboardSounds()
+                } catch (t: Throwable) {
+                    log(Log.ERROR, TAG, "Keyboard hook failed", t)
+                }
+            }
+            return
+        }
         if (param.packageName != "com.android.systemui" || sysUiHooked) return
         sysUiHooked = true
         val parts = ArrayList<String>()
@@ -91,6 +110,90 @@ class SoundTweaksModule : XposedModule() {
             } catch (t: Throwable) {
                 orig
             }
+        }
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // Samsung Keyboard: key sounds (raw resources, hooked inside the keyboard process)
+    // ---------------------------------------------------------------------------------------
+
+    /** Raw resource name → what was done with it (written to the probe file; capped, diagnostics only) */
+    private val probeSeen = java.util.concurrent.ConcurrentHashMap<String, String>()
+    @Volatile private var overrideDirChecked = false
+
+    /**
+     * The keyboard loads its key sounds with Resources.openRawResourceFd (directly or through SoundPool.load /
+     * MediaPlayer.create). The file paths inside the APK are shortened and change between versions, but the resource
+     * entry names (s_sip_regular_standard ...) are intact, so the match is by entry name, never by file name.
+     * Only a raw resource that has an override file is touched; everything else, and any failure, keeps stock behavior.
+     */
+    private fun hookKeyboardSounds() {
+        val method = Resources::class.java.getDeclaredMethod("openRawResourceFd", java.lang.Integer.TYPE)
+        hook(method).intercept { chain ->
+            val id = chain.getArg(0) as? Int
+            val name = if (id != null) rawEntryName(id) else null
+            if (name == null) {
+                chain.proceed()
+            } else {
+                if (!overrideDirChecked) {
+                    overrideDirChecked = true
+                    probeNote("_override_dir", describeOverrideDir())
+                }
+                val path = findOverride(name)
+                if (path == null) {
+                    probeNote(name, "stock (no override file)")
+                    chain.proceed()
+                } else {
+                    val afd = openOverride(path)
+                    if (afd != null) {
+                        probeNote(name, "override: ${File(path).name}")
+                        afd
+                    } else {
+                        probeNote(name, "override found but unreadable here, stock used: ${File(path).name}")
+                        chain.proceed()
+                    }
+                }
+            }
+        }
+    }
+
+    private fun rawEntryName(id: Int): String? = try {
+        val res = currentApp()?.resources
+        if (res != null && res.getResourceTypeName(id) == "raw") res.getResourceEntryName(id) else null
+    } catch (t: Throwable) {
+        null
+    }
+
+    /** SoundPool.load(AssetFileDescriptor) rejects an unknown length, so the real file length is passed. */
+    private fun openOverride(path: String): AssetFileDescriptor? = try {
+        val f = File(path)
+        AssetFileDescriptor(ParcelFileDescriptor.open(f, ParcelFileDescriptor.MODE_READ_ONLY), 0L, f.length())
+    } catch (t: Throwable) {
+        null
+    }
+
+    private fun describeOverrideDir(): String {
+        val d = File(SoundPaths.OVERRIDE_DIR)
+        val files = d.listFiles()
+        return if (files == null) "NOT readable from this process (exists=${d.exists()})" else "readable, ${files.size} files"
+    }
+
+    /**
+     * Records a raw resource the keyboard opened (once per name and result) in a file in the keyboard's own files dir,
+     * which the keyboard may always write and root can read. Capped at 64 names.
+     */
+    private fun probeNote(name: String, status: String) {
+        if (probeSeen.size >= 64 && !probeSeen.containsKey(name)) return
+        if (probeSeen.put(name, status) == status) return
+        Log.i(TAG, "keyboard raw resource: $name -> $status")
+        val app = currentApp() ?: return
+        try {
+            val proc = Application.getProcessName().replace(Regex("[^A-Za-z0-9._-]"), "_")
+            File(app.filesDir, "soundtweaks_probe_$proc.txt").writeText(
+                probeSeen.entries.sortedBy { it.key }.joinToString("\n", postfix = "\n") { "${it.key}  ${it.value}" }
+            )
+        } catch (t: Throwable) {
+            // diagnostics only
         }
     }
 

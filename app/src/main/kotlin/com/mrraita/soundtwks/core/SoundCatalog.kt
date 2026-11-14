@@ -25,7 +25,9 @@ data class SoundSlot(
     /** AudioManager.FX_* constant that can be played to preview the sound */
     val fx: Int? = null,
     /** The stock mechanism loads this sound once when SystemUI starts: refreshing SystemUI is recommended after a change */
-    val sysUiReload: Boolean = false
+    val sysUiReload: Boolean = false,
+    /** The sound belongs to another app: the slot is only shown while that package is installed */
+    val pkg: String? = null
 )
 
 object SoundCatalog {
@@ -48,6 +50,14 @@ object SoundCatalog {
             "KeypressReturn", true, AudioManager.FX_KEYPRESS_RETURN),
         SoundSlot("key_inv", R.string.slot_key_inv, R.string.slot_key_inv_desc, G_KEYS, SlotType.HOOK_FILE,
             "KeypressInvalid", true, AudioManager.FX_KEYPRESS_INVALID),
+
+        // Samsung Keyboard plays its own raw resources inside the keyboard process (hooked there), not the system effects
+        SoundSlot("sam_key_std", R.string.slot_sam_std, R.string.slot_sam_std_desc, G_KEYS, SlotType.HOOK_FILE,
+            SoundPaths.SAM_STD, pkg = SoundPaths.KB_SAMSUNG),
+        SoundSlot("sam_key_mod", R.string.slot_sam_mod, R.string.slot_sam_mod_desc, G_KEYS, SlotType.HOOK_FILE,
+            SoundPaths.SAM_MOD, pkg = SoundPaths.KB_SAMSUNG),
+        SoundSlot("sam_key_del", R.string.slot_sam_del, R.string.slot_sam_del_desc, G_KEYS, SlotType.HOOK_FILE,
+            SoundPaths.SAM_DEL, pkg = SoundPaths.KB_SAMSUNG),
 
         SoundSlot("tick", R.string.slot_tick, R.string.slot_tick_desc, G_TOUCH, SlotType.HOOK_FILE,
             "Effect_Tick", true, AudioManager.FX_KEY_CLICK),

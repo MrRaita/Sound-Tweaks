@@ -227,6 +227,13 @@
     <string name="slot_key_ret_desc">Enter / send key</string>
     <string name="slot_key_inv">Invalid key</string>
     <string name="slot_key_inv_desc">Key that cannot be pressed (most keyboards do not use it)</string>
+    <string name="slot_sam_std">Samsung Keyboard: key press</string>
+    <string name="slot_sam_std_desc">Letter, number and punctuation keys (Samsung Keyboard only)</string>
+    <string name="slot_sam_mod">Samsung Keyboard: function keys</string>
+    <string name="slot_sam_mod_desc">Function (modifier) keys (Samsung Keyboard only)</string>
+    <string name="slot_sam_del">Samsung Keyboard: delete key</string>
+    <string name="slot_sam_del_desc">Backspace key (Samsung Keyboard only)</string>
+    <string name="msg_keyboard_restart">Samsung Keyboard loads its sounds when it starts: add Samsung Keyboard to Sound Tweaks\' scope in your module manager, then force-stop the keyboard or reboot.</string>
     <string name="slot_tick">Touch click</string>
     <string name="slot_tick_desc">Screen touch, focus and back gesture</string>
     <string name="slot_screenshot">Screenshot</string>

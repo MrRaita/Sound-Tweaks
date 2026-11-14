@@ -199,11 +199,28 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         runCatching { app().contentResolver.unregisterContentObserver(sysObserver) }
     }
 
+    /** Declared before init: refreshAll() reads the slots, and properties are initialized in textual order. */
+    private val installedCache = HashMap<String, Boolean>()
+
     init {
         refreshAll()
     }
 
-    private fun readSlots() = SoundCatalog.slots.map { SlotState(it, repo.label(it)) }
+    private fun readSlots() = SoundCatalog.slots.filter { isAvailable(it) }.map { SlotState(it, repo.label(it)) }
+
+    /** A slot that belongs to another app is only listed while that app is installed (checked once per session). */
+    private fun isAvailable(slot: SoundSlot): Boolean {
+        val pkg = slot.pkg ?: return true
+        return installedCache.getOrPut(pkg) {
+            try {
+                app().packageManager.getPackageInfo(pkg, 0)
+                true
+            } catch (e: Exception) {
+                false
+            }
+        }
+    }
+
     private fun msg(s: String) { _messages.tryEmit(s) }
     private fun app() = getApplication<Application>()
     private fun readNorms(): Map<String, SlotNorm> {
@@ -482,7 +499,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         _state.update { it.copy(slots = readSlots()) }
         if (slot.sysUiReload && !_state.value.forceLock) askSysUiReload()
         val level = info?.summary()?.takeIf { it.isNotBlank() }?.let { "\n$it" } ?: ""
-        msg(text + level)
+        // Another app's process loads its sounds when it starts
+        val restart = if (slot.pkg != null && info != null) "\n" + txt(R.string.msg_keyboard_restart) else ""
+        msg(text + level + restart)
     }
 
     private fun work(block: () -> Unit) {
@@ -668,6 +687,16 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             echo "force-play lock sounds: ${'$'}([ -e ${SoundPaths.FORCE_FLAG} ] && echo ON || echo off)"
             echo "verbose event log: ${'$'}([ -e ${SoundPaths.DEBUG_FLAG} ] && echo ON || echo off)"
             echo "last SystemUI event:"; settings get global ${SoundPaths.SYSUI_LAST_KEY}
+            echo "== keyboard probe =="
+            for pk in ${SoundPaths.PROBE_PACKAGES.joinToString(" ")}; do
+              echo "${'$'}pk: ${'$'}(pm list packages ${'$'}pk | head -1) ${'$'}(dumpsys package ${'$'}pk 2>/dev/null | grep -m1 versionName)"
+              for f in /data/user/0/${'$'}pk/files/soundtweaks_probe_*.txt; do
+                [ -f "${'$'}f" ] && { echo "-- ${'$'}f"; cat "${'$'}f"; }
+              done
+            done
+            logcat -d -s SoundTweaks:I 2>/dev/null | tail -20
+            echo "SELinux denials that mention the sound store:"
+            logcat -d -b all 2>/dev/null | grep -i "avc:.*denied" | grep -i soundtweaks | tail -10
             echo "== SystemUI =="; pidof com.android.systemui
             echo "== SELinux (latest denials) =="
             logcat -d -b all 2>/dev/null | grep -i "avc:.*denied" | grep -i -E "scontext=u:r:(systemui_app|system_server|system_app|platform_app)" | tail -15
