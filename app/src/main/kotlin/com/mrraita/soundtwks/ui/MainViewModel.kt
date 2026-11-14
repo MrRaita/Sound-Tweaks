@@ -109,6 +109,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val repo = SoundRepository(app)
     private val prefs = app.getSharedPreferences("soundtweaks_ui", Context.MODE_PRIVATE)
 
+    /**
+     * Must stay above `_state`: its initializer calls readSlots() → isAvailable(), and Kotlin initializes properties in
+     * textual order, so a later declaration would still be null at that point (crash when the app opens).
+     */
+    private val installedCache = HashMap<String, Boolean>()
+
     init {
         // Version 0.5: the lock slots went back to the stock mechanism (Settings path); forget the old records
         if (prefs.getInt("schema", 0) < 2) {
@@ -198,9 +204,6 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         runCatching { app().unregisterReceiver(sysReceiver) }
         runCatching { app().contentResolver.unregisterContentObserver(sysObserver) }
     }
-
-    /** Declared before init: refreshAll() reads the slots, and properties are initialized in textual order. */
-    private val installedCache = HashMap<String, Boolean>()
 
     init {
         refreshAll()
