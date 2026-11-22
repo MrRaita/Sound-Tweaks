@@ -160,7 +160,10 @@ app/src/main/
 - Kulaklık uyarısı seçeneği, kök yöneticisinin `/data/adb/post-fs-data.d` betiklerini çalıştırmasına bağlıdır.
 - Sistem ses kütüphanesi, kökteki tüm bölümlerde `/<bölüm>/media/audio` dizinlerini arar; üreticiye özel ses dizinleri bu kalıbın dışındaysa listelenmez. Tanı raporundaki "sound directories" bölümü, cihazda nelerin bulunduğunu gösterir.
 - Hook noktaları AOSP sınıf adlarına dayanır; üreticiye özel arayüzlerde sınıf adları farklıysa ilgili hook çalışmaz ve durum kartında hata olarak görünür.
-
+> [!WARNING]
+> OneUI ve HyperOS gibi işletim sistemlerinde modülün ses dosyalarını bulmakta sorun yaşadığı veya dosyaları yalnızca kısmen tespit edebildiği doğrulanmıştır. Şu anda OneUI desteği üzerinde çalışıyorum ancak diğer işletim sistemleri için henüz bir destek çalışması planlanmamaktadır.
+>
+> Bu sınırlamalar dışında modül, AOSP tabanlı işletim sistemlerinde sorunsuz çalışmaktadır.
 ## Lisans
 
 Sound Tweaks, [GNU Genel Kamu Lisansı sürüm 3](LICENSE) (GPL-3.0-or-later) ile lisanslanmıştır. Programı, Özgür Yazılım Vakfı'nın yayımladığı GPL'in 3. sürümünün ya da (isteğinize bağlı olarak) daha yeni bir sürümünün koşulları altında yeniden dağıtabilir ve değiştirebilirsiniz. Program yararlı olması umuduyla dağıtılır, ancak herhangi bir garanti vermez.
