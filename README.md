@@ -158,7 +158,10 @@ app/src/main/
 - The headphone warning option depends on the root manager running the `/data/adb/post-fs-data.d` scripts.
 - The system sound library searches `/<partition>/media/audio` on every partition at the root; vendor-specific sound directories outside that pattern are not listed. The "sound directories" section of the diagnostic report shows what exists on a device.
 - The hook points rely on AOSP class names; on vendor skins where the class names differ, the related hook does not work and shows up as an error on the status card.
-
+> [!WARNING]
+> On operating systems such as OneUI and HyperOS, the module has been confirmed to have trouble locating sound files or detecting only some of them. I have started working on OneUI support, but I cannot make the same commitment for other operating systems.
+>
+> Aside from these limitations, the module works flawlessly on AOSP-based operating systems.
 ## License
 
 Sound Tweaks is licensed under the [GNU General Public License version 3](LICENSE) (GPL-3.0-or-later). You can redistribute it and/or modify it under the terms of the GNU General Public License as published by the Free Software Foundation, either version 3 of the License, or (at your option) any later version. This program is distributed in the hope that it will be useful, but WITHOUT ANY WARRANTY.
